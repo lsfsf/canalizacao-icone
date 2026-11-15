@@ -409,6 +409,13 @@
       return true;
     }
 
+    // A folha guarda as datas como 2026-11-15; na app mostram-se como 15/11/2026.
+    // Qualquer outro formato é mostrado tal como vem da folha.
+    function dataPT(v) {
+      const m = String(v == null ? '' : v).trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      return m ? m[3] + '/' + m[2] + '/' + m[1] : String(v == null ? '' : v);
+    }
+
     function esc(v) {
       return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
@@ -469,7 +476,7 @@
             <div style="font-size:13px; color:var(--muted); margin:6px 0; white-space:pre-line;">${esc(o.descricao)}</div>
             <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
               ${semValor ? '<strong style="font-size:15px; color:var(--warning);">Sem valor</strong>' : `<strong style="font-size:16px;">${eur(o.valor)}</strong>`}
-              <small style="color:var(--muted)">Início: ${esc(o.dataInicio)}</small>
+              <small style="color:var(--muted)">Início: ${esc(dataPT(o.dataInicio))}</small>
             </div>
             ${!fechado ? `<button class="btn-pay" style="background:rgba(245,158,11,0.15); color:#fbbf24; border-color:#b45309;" onclick="definirValorObra('${esc(o.id)}')">€ ${semValor ? 'Definir valor' : 'Alterar valor'}</button>` : ''}
             ${!pago && !semValor ? `<button class="btn-pay" onclick="marcarRecebida('${esc(o.id)}')">✓ Marcar como Recebido em Caixa</button>` : ''}
@@ -483,7 +490,7 @@
           <div class="card-header">
             <div>
               <div class="card-title">${esc(d.categoria)}</div>
-              <small style="color:var(--muted)">${esc(d.data)}${liq ? ' • ' + esc(d.estado) : ''}</small>
+              <small style="color:var(--muted)">${esc(dataPT(d.data))}${liq ? ' • ' + esc(d.estado) : ''}</small>
             </div>
             <span class="badge b-info">${esc(d.origem)}</span>
           </div>
