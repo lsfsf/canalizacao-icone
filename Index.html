@@ -50,6 +50,7 @@
       display: inline-block; min-width: 18px; height: 18px; line-height: 18px; border-radius: 9px;
       background: var(--primary); color: #020617; font-size: 11px; font-weight: 800; text-align: center; margin-right: 4px;
     }
+    input[type=date] { color-scheme: dark; min-height: 42px; }
     .item-trab { display: grid; grid-template-columns: auto 1fr 100px auto; gap: 8px; align-items: center; margin-top: 8px; }
     .item-trab .nome { font-size: 13px; }
     .item-trab input { padding: 8px 10px; font-size: 14px; text-align: right; }
@@ -152,6 +153,7 @@
       <div class="form-group"><label>Quem pagou / origem</label><select id="dd-orig"></select></div>
       <div class="form-group"><label>Descrição</label><input type="text" id="dd-desc" style="margin-top:0;"></div>
       <div class="form-group"><label>Valor (€)</label><input type="text" inputmode="decimal" id="dd-valor" style="margin-top:0;"></div>
+      <div class="form-group"><label>Data</label><input type="date" id="dd-data" style="margin-top:0;"></div>
       <div class="modal-botoes">
         <button class="btn-cancelar" onclick="fecharEditorDespesa()">Cancelar</button>
         <button class="btn-ok" onclick="gravarEditorDespesa(false)">Gravar</button>
@@ -266,6 +268,10 @@
           </div>
         </div>
         <div class="form-group">
+          <label>Data de início</label>
+          <input type="date" id="ob-data" oninput="this.dataset.manual='1'">
+        </div>
+        <div class="form-group">
           <label>Trabalhos realizados (toca pela ordem em que foram feitos)</label>
           <div class="chips" id="ob-chips"></div>
           <div style="display:grid; grid-template-columns:1fr auto; gap:8px; margin-top:8px;">
@@ -338,9 +344,15 @@
           <label>Descrição / Fornecedor</label>
           <input type="text" id="de-desc" placeholder="Ex: Leroy Merlin - Tubos e uniões">
         </div>
-        <div class="form-group">
-          <label>Valor (€)</label>
-          <input type="number" step="0.01" id="de-valor" placeholder="0.00">
+        <div class="form-group" style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+          <div>
+            <label>Valor (€)</label>
+            <input type="number" step="0.01" id="de-valor" placeholder="0.00">
+          </div>
+          <div>
+            <label>Data</label>
+            <input type="date" id="de-data" oninput="this.dataset.manual='1'">
+          </div>
         </div>
         <button class="btn-primary" onclick="adicionarDespesa()">Gravar Despesa na Folha</button>
       </div>
@@ -358,7 +370,7 @@
   <script>
     // Janelas dentro da app (substituem alert/confirm/prompt, que no Apps Script
     // mostram o título "Uma página incorporada em ...googleusercontent.com diz").
-    function abrirModal({ titulo, texto, tipo, comCancelar, comInput, valorInicial, textoOk, textoCancelar, teclado }) {
+    function abrirModal({ titulo, texto, tipo, comCancelar, comInput, valorInicial, textoOk, textoCancelar, teclado, tipoInput }) {
       return new Promise(resolve => {
         const fundo = document.getElementById('modal-fundo');
         const modal = document.getElementById('modal');
@@ -369,6 +381,7 @@
         document.getElementById('modal-titulo').textContent = titulo || '';
         document.getElementById('modal-texto').textContent = texto || '';
         input.style.display = comInput ? 'block' : 'none';
+        input.type = tipoInput || 'text';
         input.value = valorInicial || '';
         input.inputMode = teclado || 'decimal';
         cancelar.style.display = comCancelar ? 'block' : 'none';
@@ -407,11 +420,25 @@
     function eur(v) {
       return Number(v || 0).toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
     }
+    function hojeISO() {
+      const d = new Date(), z = n => String(n).padStart(2, '0');
+      return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate());
+    }
+    // Os campos de data começam em "hoje"; se a app ficar aberta de um dia para o outro e a pessoa
+    // não os tiver mexido, voltam a hoje ao mudar de separador.
+    function atualizarDatasPorOmissao(forcar) {
+      ['ob-data', 'de-data'].forEach(id => {
+        const c = document.getElementById(id);
+        if (forcar || !c.dataset.manual) { c.value = hojeISO(); delete c.dataset.manual; }
+      });
+    }
+
     function mudarTab(nome, btn) {
       document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
       document.getElementById('tab-' + nome).classList.add('active');
       document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
       if (btn) btn.classList.add('active');
+      atualizarDatasPorOmissao(false);
     }
 
     function carregarDados() {
@@ -576,7 +603,7 @@
             <div style="font-size:13px; color:var(--muted); margin:6px 0; white-space:pre-line;">${esc(o.descricao)}</div>
             <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
               ${semValor ? '<strong style="font-size:15px; color:var(--warning);">Sem valor</strong>' : `<strong style="font-size:16px;">${eur(o.valor)}</strong>`}
-              <small style="color:var(--muted)">Início: ${esc(dataPT(o.dataInicio))}</small>
+              <small style="color:var(--muted)">Início: ${esc(dataPT(o.dataInicio))}${pago && o.dataRecebimento ? ' • Recebido: ' + esc(dataPT(o.dataRecebimento)) : ''}</small>
             </div>
             ${!fechado ? `<button class="btn-pay" style="background:rgba(245,158,11,0.15); color:#fbbf24; border-color:#b45309;" onclick="definirValorObra('${esc(o.id)}')">€ ${semValor ? 'Definir valor' : 'Alterar valor'}</button>` : ''}
             ${!pago && !semValor ? `<button class="btn-pay" onclick="marcarRecebida('${esc(o.id)}')">✓ Marcar como Recebido em Caixa</button>` : ''}
@@ -851,6 +878,7 @@
 
     function adicionarObra() {
       adicionarOutroTrabalho(); // inclui o texto de "Outro trabalho" mesmo sem carregar em Juntar
+      const dataForm = document.getElementById('ob-data').value;
       const nomeObra = document.getElementById('ob-nome').value.trim();
       const localidade = document.getElementById('ob-local').value.trim();
       const nomeCliente = document.getElementById('ob-cliente').value.trim();
@@ -873,13 +901,16 @@
         nomeCliente: nomeCliente,
         descricao: descricaoNumerada(),
         valor: valor,
-        estadoPagamento: estado
+        estadoPagamento: estado,
+        dataInicio: dataForm,
+        dataRecebimento: estado === 'Recebido em Caixa' ? dataForm : ''
       });
       if (!enviado) return;
       document.getElementById('ob-nome').value = '';
       document.getElementById('ob-local').value = '';
       document.getElementById('ob-cliente').value = '';
       trabalhosEscolhidos = []; document.getElementById('ob-outro').value = ''; desenharChips();
+      const od = document.getElementById('ob-data'); od.value = hojeISO(); delete od.dataset.manual;
       document.getElementById('ob-valor').value = '';
     }
 
@@ -911,9 +942,11 @@
         categoria: document.getElementById('de-cat').value,
         quemPagou: document.getElementById('de-origem').value,
         descricao: descricao,
-        valor: valor
+        valor: valor,
+        data: document.getElementById('de-data').value
       });
       if (!enviado) return;
+      const dd = document.getElementById('de-data'); dd.value = hojeISO(); delete dd.dataset.manual;
       document.getElementById('de-desc').value = '';
       document.getElementById('de-valor').value = '';
     }
@@ -947,6 +980,7 @@
       document.getElementById('dd-orig').value = d.origem;
       document.getElementById('dd-desc').value = d.descricao;
       document.getElementById('dd-valor').value = formatarInput(d.valor);
+      document.getElementById('dd-data').value = /^\d{4}-\d{2}-\d{2}$/.test(d.data) ? d.data : '';
       ajustarOrigemEditor();
       document.getElementById('despesa-fundo').classList.add('aberto');
     }
@@ -980,7 +1014,8 @@
       enviarAcao({
         action: 'editarDespesa', linha: d.linha, anular: !!anular,
         esperado: { data: d.data, categoria: d.categoria, descricao: d.descricao, valor: d.valor, origem: d.origem },
-        categoria: categoria, descricao: descricao, valor: valor, quemPagou: quemPagou
+        categoria: categoria, descricao: descricao, valor: valor, quemPagou: quemPagou,
+        data: document.getElementById('dd-data').value
       });
     }
 
@@ -991,11 +1026,14 @@
     }
 
     async function marcarRecebida(idObra) {
-      if (!(await confirmar('Obra recebida', 'O cliente pagou a obra ' + idObra + ' em dinheiro vivo?', 'Sim, recebido'))) return;
-      enviarAcao({ action: 'marcarObraRecebida', idObra: idObra });
+      const dia = await abrirModal({ titulo: 'Obra recebida', texto: 'Em que dia o cliente pagou a obra ' + idObra + ' em dinheiro vivo?',
+        comCancelar: true, comInput: true, tipoInput: 'date', valorInicial: hojeISO(), textoOk: 'Recebido' });
+      if (dia === null) return;
+      if (!dia) return avisar('Escolhe o dia do pagamento.');
+      enviarAcao({ action: 'marcarObraRecebida', idObra: idObra, dataRecebimento: dia });
     }
 
-    window.onload = function () { ajustarOrigemDespesa(); desenharChips(); carregarDados(); };
+    window.onload = function () { ajustarOrigemDespesa(); desenharChips(); atualizarDatasPorOmissao(true); carregarDados(); };
   </script>
 </body>
 </html>

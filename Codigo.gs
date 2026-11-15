@@ -161,11 +161,12 @@ function guardarNaFolha(payload, acesso) {
     const novoId = gerarProximoIdObra(sh);
     const temValor = payload.valor !== null && payload.valor !== undefined && payload.valor !== '';
     const estado = temValor ? (payload.estadoPagamento || 'Pendente') : 'Pendente';
-    const dataRec = (estado === 'Recebido em Caixa' && !payload.dataRecebimento) ? hoje : (payload.dataRecebimento || '');
+    const dataIni = normalizarData(payload.dataInicio, hoje);
+    const dataRec = estado === 'Recebido em Caixa' ? normalizarData(payload.dataRecebimento, dataIni) : '';
 
     sh.getRange(linha, 1, 1, 10).setValues([[
       novoId,
-      payload.dataInicio || hoje,
+      dataIni,
       payload.nomeObra || '',
       payload.localidade || '',
       payload.nomeCliente || '',
@@ -178,7 +179,7 @@ function guardarNaFolha(payload, acesso) {
     acaoTxt = 'Nova obra';
     detalhe = novoId + ' • ' + (payload.nomeObra || payload.localidade || payload.nomeCliente || '(sem nome)') +
       ' — ' + (temValor ? fmtEur(payload.valor) : 'sem valor') + ' (' + estado + ')' +
-      (payload.descricao ? ' — ' + String(payload.descricao).replace(/\n/g, ' | ') : '');
+      (payload.descricao ? ' — ' + String(payload.descricao).replace(/\n/g, ' | ') : '') + sufixoData(dataIni, hoje);
   }
   else if (payload.action === 'addDespesa') {
     // Regra do negócio: portagens são sempre Via Verde do Luís, e Via Verde só existe para portagens.
@@ -187,11 +188,12 @@ function guardarNaFolha(payload, acesso) {
     if (categoria === 'Portagens') quemPagou = 'Luís - Via Verde';
     else if (quemPagou === 'Luís - Via Verde') throw new Error('"Luís - Via Verde" só pode ser usado em Portagens.');
 
+    const dataDesp = normalizarData(payload.data, hoje);
     const sh = abaObrigatoria(ss, ABAS.despesas);
     const linha = obterLinhaLivre(sh, 7, [1, 4]);
 
     sh.getRange(linha, 1, 1, 7).setValues([[
-      payload.data || hoje,
+      dataDesp,
       categoria,
       payload.descricao || '',
       Number(payload.valor || 0),
@@ -200,7 +202,7 @@ function guardarNaFolha(payload, acesso) {
       payload.notas || ''
     ]]);
     acaoTxt = 'Nova despesa';
-    detalhe = categoria + ' — ' + (payload.descricao || '(sem descrição)') + ' — ' + fmtEur(payload.valor) + ' (' + quemPagou + ')';
+    detalhe = categoria + ' — ' + (payload.descricao || '(sem descrição)') + ' — ' + fmtEur(payload.valor) + ' (' + quemPagou + ')' + sufixoData(dataDesp, hoje);
   }
   else if (payload.action === 'marcarObraRecebida') {
     const sh = abaObrigatoria(ss, ABAS.trabalhos);
@@ -208,9 +210,10 @@ function guardarNaFolha(payload, acesso) {
     for (let i = PRIMEIRA_LINHA_DADOS - 1; i < dados.length; i++) {
       if (String(dados[i][0]).trim() === String(payload.idObra).trim()) {
         sh.getRange(i + 1, 8).setValue('Recebido em Caixa');
-        sh.getRange(i + 1, 9).setValue(payload.dataRecebimento || hoje);
+        const dataRecebida = normalizarData(payload.dataRecebimento, hoje);
+        sh.getRange(i + 1, 9).setValue(dataRecebida);
         acaoTxt = 'Obra recebida';
-        detalhe = String(dados[i][0]) + ' • ' + (dados[i][2] || dados[i][3] || dados[i][4] || '') + ' — ' + fmtEur(dados[i][6]) + ' recebido em caixa';
+        detalhe = String(dados[i][0]) + ' • ' + (dados[i][2] || dados[i][3] || dados[i][4] || '') + ' — ' + fmtEur(dados[i][6]) + ' recebido em caixa' + sufixoData(dataRecebida, hoje);
         break;
       }
     }
@@ -275,6 +278,7 @@ function guardarNaFolha(payload, acesso) {
 
     let categoria = String(disp[1]), descricao = String(disp[2]), quemPagou = String(disp[4]), valor = Number(atual[3] || 0);
     const antes = textoDespesa(categoria, descricao, valor, quemPagou);
+    let dataNova = null;
     if (payload.anular) {
       descricao = /^ANULADA/.test(descricao) ? descricao : 'ANULADA — ' + (descricao || '(sem descrição)');
       valor = 0;
@@ -292,10 +296,15 @@ function guardarNaFolha(payload, acesso) {
         throw new Error('"Luís - Via Verde" só pode ser usado em Portagens.');
       }
       if (!descricao) throw new Error('Preenche a descrição da despesa.');
+      if (payload.data) dataNova = normalizarData(payload.data, null);
       acaoTxt = 'Despesa corrigida';
     }
     sh.getRange(linha, 2, 1, 4).setValues([[categoria, descricao, valor, quemPagou]]);
     detalhe = antes + ' → ' + textoDespesa(categoria, descricao, valor, quemPagou);
+    if (dataNova && dataNova !== String(disp[0])) {
+      sh.getRange(linha, 1).setValue(dataNova);
+      detalhe += ' — data ' + dataPT(String(disp[0])) + ' → ' + dataPT(dataNova);
+    }
   }
   else {
     throw new Error('Ação desconhecida: ' + payload.action);
@@ -307,6 +316,21 @@ function guardarNaFolha(payload, acesso) {
 }
 
 // ---------- Registo de alterações ----------
+
+// Datas chegam da app como aaaa-mm-dd. Vazio devolve o valor por omissão; uma data impossível dá erro.
+function normalizarData(txt, padrao) {
+  if (txt === undefined || txt === null || txt === '') return padrao;
+  const m = String(txt).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) throw new Error('Data inválida.');
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  if (d.getFullYear() !== Number(m[1]) || d.getMonth() !== Number(m[2]) - 1 || d.getDate() !== Number(m[3])) throw new Error('Data inválida.');
+  return String(txt);
+}
+function dataPT(iso) {
+  const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? m[3] + '/' + m[2] + '/' + m[1] : String(iso);
+}
+function sufixoData(d, hoje) { return d && d !== hoje ? ' — data ' + dataPT(d) : ''; }
 
 function textoDespesa(categoria, descricao, valor, origem) {
   return categoria + ' — ' + (descricao || '(sem descrição)') + ' — ' + fmtEur(valor) + ' (' + origem + ')';
