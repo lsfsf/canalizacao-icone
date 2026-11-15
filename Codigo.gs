@@ -10,6 +10,8 @@ const SHEET_DESPESAS = 'Despesas e Portagens';
 const SHEET_FUNDO = 'Fundo de Caixa';
 const SHEET_ACERTO = 'Acerto de Contas (Luís & Paulo)';
 const SHEET_REGISTO = 'Registo de Alterações';
+const SHEET_UTILIZADORES = 'Utilizadores';
+const SHEET_FECHOS = 'Acertos Fechados';
 
 const PRIMEIRA_LINHA_DADOS = 5;
 
@@ -29,6 +31,13 @@ const CEL_ACERTO = {
 const CEL_FUNDO = { inicial: 'C6', gastoFundo: 'C7', troco: 'C8', saldoFisico: 'C9' };
 
 function doGet() {
+  try {
+    verificarAcesso(SpreadsheetApp.getActiveSpreadsheet());
+  } catch (err) {
+    return HtmlService.createHtmlOutput(
+      '<div style="font-family:sans-serif;padding:24px;max-width:480px;margin:auto">' +
+      '<h3>Acesso não autorizado</h3><p>' + escHtml(textoErroAcesso(err)) + '</p></div>');
+  }
   const nomesPossiveis = ['Index', 'index'];
   let html = null;
   for (let i = 0; i < nomesPossiveis.length; i++) {
@@ -55,17 +64,56 @@ function doGet() {
 }
 
 function apiLerDados() {
-  return lerDadosCompletos();
+  const acesso = verificarAcesso(SpreadsheetApp.getActiveSpreadsheet());
+  return lerDadosCompletos(acesso);
 }
 
 function apiGuardarDados(payload) {
+  const acesso = verificarAcesso(SpreadsheetApp.getActiveSpreadsheet());
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    return guardarNaFolha(payload);
+    return guardarNaFolha(payload, acesso);
   } finally {
     lock.releaseLock();
   }
+}
+
+// ---------- Controlo de acesso ----------
+// A aba "Utilizadores" (coluna A = email, coluna B = nome) lista quem pode usar a app.
+// Sem emails na lista, a app funciona sem proteção (como antes). Com emails, só esses entram,
+// e o nome (Luís/Paulo) vem do email, não do que a pessoa escolhe.
+// Requer a implementação "Executar como: utilizador que acede" para o Google dizer quem é.
+
+function lerUtilizadores(ss) {
+  const sh = ss.getSheetByName(SHEET_UTILIZADORES);
+  if (!sh) return [];
+  const ult = sh.getLastRow();
+  if (ult < 2) return [];
+  return sh.getRange(2, 1, ult - 1, 2).getValues()
+    .map(r => ({ email: String(r[0]).trim().toLowerCase(), nome: String(r[1]).trim() }))
+    .filter(u => u.email.indexOf('@') > 0);
+}
+
+function verificarAcesso(ss) {
+  if (!ss) throw new Error('ACESSO: Sem acesso à folha. Pede para partilharem a folha com o teu email Google.');
+  const lista = lerUtilizadores(ss);
+  if (!lista.length) return { protegido: false, nome: '', email: '' };
+  let email = '';
+  try { email = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase(); } catch (e) {}
+  if (!email) {
+    throw new Error('ACESSO: A proteção está ligada, mas a app não consegue ver quem és. ' +
+      'Na implementação do Apps Script escolhe "Executar como: utilizador que acede" e abre a app com a tua conta Google.');
+  }
+  const u = lista.find(x => x.email === email);
+  if (!u) throw new Error('ACESSO: O email ' + email + ' não tem autorização para usar esta app.');
+  return { protegido: true, nome: u.nome || email, email: email };
+}
+
+function textoErroAcesso(err) { return String(err && err.message ? err.message : err).replace(/^ACESSO:\s*/, ''); }
+
+function escHtml(t) {
+  return String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
 function encontrarAba(ss, nomesPossiveis) {
@@ -96,12 +144,12 @@ const ABAS = {
   acerto: [SHEET_ACERTO, 'Acerto de Contas', 'Acerto']
 };
 
-function guardarNaFolha(payload) {
+function guardarNaFolha(payload, acesso) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const hoje = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
   let resultado = null;
   let acaoTxt = '', detalhe = '';
-  const quem = identificarUtilizador(payload.utilizador);
+  const quem = (acesso && acesso.protegido) ? acesso.nome : identificarUtilizador(payload.utilizador);
 
   if (payload.action === 'addTrabalho') {
     const sh = abaObrigatoria(ss, ABAS.trabalhos);
@@ -201,10 +249,49 @@ function guardarNaFolha(payload) {
     detalhe = antes + ' → ' + fmtEur(payload.valor);
   }
   else if (payload.action === 'fecharCiclo') {
-    resultado = fecharCiclo(ss, hoje);
+    resultado = fecharCiclo(ss, hoje, quem);
     acaoTxt = 'Ciclo fechado';
     detalhe = 'Luís ' + fmtEur(resultado.luis) + ' • Paulo ' + fmtEur(resultado.paulo) + ' • fica no envelope ' + fmtEur(resultado.reserva) +
       ' • ' + resultado.obrasFechadas + ' obras fechadas, ' + resultado.despesasLiquidadas + ' despesas liquidadas';
+  }
+  else if (payload.action === 'editarDespesa') {
+    const sh = abaObrigatoria(ss, ABAS.despesas);
+    const fim = encontrarLinhaAntesDoTotal(sh, 1, 'Total') - 1;
+    const linha = Number(payload.linha);
+    if (!(linha >= PRIMEIRA_LINHA_DADOS && linha <= fim)) throw new Error('Despesa não encontrada. Atualiza a app e tenta de novo.');
+    const atual = sh.getRange(linha, 1, 1, 7).getValues()[0];
+    const disp = sh.getRange(linha, 1, 1, 7).getDisplayValues()[0];
+    const esp = payload.esperado || {};
+    // Confirma que a linha ainda é a despesa que a pessoa viu (alguém pode ter mexido entretanto).
+    const igual = String(disp[0]) === String(esp.data) && String(disp[1]) === String(esp.categoria) &&
+      String(disp[2]) === String(esp.descricao) && String(disp[4]) === String(esp.origem) &&
+      Math.abs(Number(atual[3] || 0) - Number(esp.valor || 0)) < 0.005;
+    if (!igual) throw new Error('Esta despesa mudou entretanto. Atualiza a app e tenta de novo.');
+    if (String(atual[5]) !== 'Aberto') throw new Error('Esta despesa já foi liquidada e não pode ser alterada.');
+
+    let categoria = String(disp[1]), descricao = String(disp[2]), quemPagou = String(disp[4]), valor = Number(atual[3] || 0);
+    const antes = textoDespesa(categoria, descricao, valor, quemPagou);
+    if (payload.anular) {
+      descricao = /^ANULADA/.test(descricao) ? descricao : 'ANULADA — ' + (descricao || '(sem descrição)');
+      valor = 0;
+      acaoTxt = 'Despesa anulada';
+    } else {
+      categoria = payload.categoria || categoria;
+      quemPagou = payload.quemPagou || quemPagou;
+      descricao = String(payload.descricao || '').trim();
+      valor = Number(payload.valor);
+      if (isNaN(valor) || valor < 0) throw new Error('Valor inválido.');
+      if (categoria === 'Portagens') {
+        quemPagou = 'Luís - Via Verde';
+        if (!descricao) descricao = 'Portagem Via Verde';
+      } else if (quemPagou === 'Luís - Via Verde') {
+        throw new Error('"Luís - Via Verde" só pode ser usado em Portagens.');
+      }
+      if (!descricao) throw new Error('Preenche a descrição da despesa.');
+      acaoTxt = 'Despesa corrigida';
+    }
+    sh.getRange(linha, 2, 1, 4).setValues([[categoria, descricao, valor, quemPagou]]);
+    detalhe = antes + ' → ' + textoDespesa(categoria, descricao, valor, quemPagou);
   }
   else {
     throw new Error('Ação desconhecida: ' + payload.action);
@@ -212,10 +299,14 @@ function guardarNaFolha(payload) {
 
   if (acaoTxt) registar(ss, quem, acaoTxt, detalhe);
   SpreadsheetApp.flush();
-  return { status: 'ok', resultado: resultado, data: lerDadosCompletos() };
+  return { status: 'ok', resultado: resultado, data: lerDadosCompletos(acesso) };
 }
 
 // ---------- Registo de alterações ----------
+
+function textoDespesa(categoria, descricao, valor, origem) {
+  return categoria + ' — ' + (descricao || '(sem descrição)') + ' — ' + fmtEur(valor) + ' (' + origem + ')';
+}
 
 function fmtEur(v) {
   const n = Number(v);
@@ -266,7 +357,7 @@ function lerRegisto(ss) {
  * - despesas "Aberto" passam a "Liquidado";
  * - o fundo inicial do novo ciclo passa a ser a reserva deixada no envelope (Linha G).
  */
-function fecharCiclo(ss, hoje) {
+function fecharCiclo(ss, hoje, quem) {
   const shAcerto = abaObrigatoria(ss, ABAS.acerto);
   const shTrab = abaObrigatoria(ss, ABAS.trabalhos);
   const shDesp = abaObrigatoria(ss, ABAS.despesas);
@@ -287,42 +378,91 @@ function fecharCiclo(ss, hoje) {
     paulo: Number(shAcerto.getRange(CEL_ACERTO.totalPaulo).getValue()) || 0,
     reserva: reserva,
     obrasFechadas: 0,
-    despesasLiquidadas: 0
+    despesasLiquidadas: 0,
+    obras: []
+  };
+  // Números do acerto tal como estão agora (depois de fechar ficam a zero).
+  const foto = {
+    cobrado: Number(shAcerto.getRange(CEL_ACERTO.cobrado).getValue()) || 0,
+    despLuis: Number(shAcerto.getRange(CEL_ACERTO.despLuis).getValue()) || 0,
+    despPaulo: Number(shAcerto.getRange(CEL_ACERTO.despPaulo).getValue()) || 0,
+    mesa: Number(shAcerto.getRange(CEL_ACERTO.dinheiroMao).getValue()) || 0,
+    gastoFundo: Number(shFundo.getRange(CEL_FUNDO.gastoFundo).getValue()) || 0
   };
 
+  // 1.º passo (só leitura): que obras e despesas fecham.
   const fimTrab = encontrarLinhaAntesDoTotal(shTrab, 1, 'Total') - 1;
+  let ciclos = [], nTrab = 0;
   if (fimTrab >= PRIMEIRA_LINHA_DADOS) {
-    const n = fimTrab - PRIMEIRA_LINHA_DADOS + 1;
-    const estados = shTrab.getRange(PRIMEIRA_LINHA_DADOS, 8, n, 1).getValues();
-    const ciclos = shTrab.getRange(PRIMEIRA_LINHA_DADOS, 10, n, 1).getValues();
-    for (let i = 0; i < n; i++) {
+    nTrab = fimTrab - PRIMEIRA_LINHA_DADOS + 1;
+    const ids = shTrab.getRange(PRIMEIRA_LINHA_DADOS, 1, nTrab, 1).getValues();
+    const estados = shTrab.getRange(PRIMEIRA_LINHA_DADOS, 8, nTrab, 1).getValues();
+    ciclos = shTrab.getRange(PRIMEIRA_LINHA_DADOS, 10, nTrab, 1).getValues();
+    for (let i = 0; i < nTrab; i++) {
       if (String(estados[i][0]) === 'Recebido em Caixa' && String(ciclos[i][0]) === 'Aberto') {
         ciclos[i][0] = 'Fechado';
         resumo.obrasFechadas++;
+        resumo.obras.push(String(ids[i][0]));
       }
     }
-    shTrab.getRange(PRIMEIRA_LINHA_DADOS, 10, n, 1).setValues(ciclos);
   }
-
   const fimDesp = encontrarLinhaAntesDoTotal(shDesp, 1, 'Total') - 1;
+  let nDesp = 0, vals = [], estadosDesp = [], notasDesp = [];
   if (fimDesp >= PRIMEIRA_LINHA_DADOS) {
-    const n = fimDesp - PRIMEIRA_LINHA_DADOS + 1;
-    const vals = shDesp.getRange(PRIMEIRA_LINHA_DADOS, 1, n, 7).getValues();
-    const estados = vals.map(r => [r[5]]);
-    const notas = vals.map(r => [r[6]]);
-    for (let i = 0; i < n; i++) {
-      if (String(estados[i][0]) === 'Aberto' && String(vals[i][0]).trim() !== '') {
-        estados[i][0] = 'Liquidado';
-        notas[i][0] = (notas[i][0] ? notas[i][0] + ' | ' : '') + 'Acerto ' + hoje;
+    nDesp = fimDesp - PRIMEIRA_LINHA_DADOS + 1;
+    vals = shDesp.getRange(PRIMEIRA_LINHA_DADOS, 1, nDesp, 7).getValues();
+    estadosDesp = vals.map(r => [r[5]]);
+    notasDesp = vals.map(r => [r[6]]);
+    for (let i = 0; i < nDesp; i++) {
+      if (String(estadosDesp[i][0]) === 'Aberto' && String(vals[i][0]).trim() !== '') {
+        estadosDesp[i][0] = 'Liquidado';
+        notasDesp[i][0] = (notasDesp[i][0] ? notasDesp[i][0] + ' | ' : '') + 'Acerto ' + hoje;
         resumo.despesasLiquidadas++;
       }
     }
-    shDesp.getRange(PRIMEIRA_LINHA_DADOS, 6, n, 1).setValues(estados);
-    shDesp.getRange(PRIMEIRA_LINHA_DADOS, 7, n, 1).setValues(notas);
   }
 
+  // 2.º passo: guarda o resumo do acerto ANTES de alterar o que quer que seja
+  // (se falhar, o ciclo não fecha).
+  registarFecho(ss, quem, resumo, foto);
+
+  // 3.º passo: fecha.
+  if (nTrab) shTrab.getRange(PRIMEIRA_LINHA_DADOS, 10, nTrab, 1).setValues(ciclos);
+  if (nDesp) {
+    shDesp.getRange(PRIMEIRA_LINHA_DADOS, 6, nDesp, 1).setValues(estadosDesp);
+    shDesp.getRange(PRIMEIRA_LINHA_DADOS, 7, nDesp, 1).setValues(notasDesp);
+  }
   shFundo.getRange(CEL_FUNDO.inicial).setValue(reserva);
   return resumo;
+}
+
+// Uma linha por ciclo fechado, na aba "Acertos Fechados" (criada automaticamente).
+function registarFecho(ss, quem, resumo, foto) {
+  let sh = ss.getSheetByName(SHEET_FECHOS);
+  if (!sh) {
+    sh = ss.insertSheet(SHEET_FECHOS);
+    sh.getRange(1, 1, 1, 12).setValues([['Data e hora', 'Fechado por', 'Obras cobradas (€)', 'Gastos do fundo (€)',
+      'Despesas do Luís (€)', 'Despesas do Paulo (€)', 'Dinheiro na mesa (€)', 'Ficou no envelope (€)',
+      'Luís recebeu (€)', 'Paulo recebeu (€)', 'Obras fechadas', 'Despesas liquidadas']]).setFontWeight('bold');
+    sh.setFrozenRows(1);
+    sh.getRange('A:A').setNumberFormat('dd/MM/yyyy HH:mm');
+    sh.getRange('C:J').setNumberFormat('#,##0.00 "€"');
+    sh.setColumnWidth(1, 130); sh.setColumnWidth(11, 260);
+  }
+  sh.appendRow([new Date(), quem, foto.cobrado, foto.gastoFundo, foto.despLuis, foto.despPaulo, foto.mesa,
+    resumo.reserva, resumo.luis, resumo.paulo, resumo.obras.join(', '), resumo.despesasLiquidadas]);
+}
+
+// Últimos acertos fechados (mais recentes primeiro).
+function lerAcertos(ss) {
+  const sh = ss.getSheetByName(SHEET_FECHOS);
+  if (!sh) return [];
+  const ult = sh.getLastRow();
+  if (ult < 2) return [];
+  const n = Math.min(12, ult - 1);
+  return sh.getRange(ult - n + 1, 1, n, 12).getDisplayValues().reverse().map(r => ({
+    data: r[0], quem: r[1], cobrado: r[2], luis: r[8], paulo: r[9], envelope: r[7], obras: r[10], despesas: r[11]
+  }));
 }
 
 // Lê todas as células do mapa numa só chamada (bloco A1 até à maior célula usada).
@@ -346,7 +486,7 @@ function lerNumeros(sheet, mapa) {
   return out;
 }
 
-function lerDadosCompletos() {
+function lerDadosCompletos(acesso) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const shTrab = encontrarAba(ss, ABAS.trabalhos);
   const shDesp = encontrarAba(ss, ABAS.despesas);
@@ -389,6 +529,7 @@ function lerDadosCompletos() {
       for (let i = 0; i < n; i++) {
         if (String(disp[i][0] || '').trim() === '') continue;
         despesas.push({
+          linha: PRIMEIRA_LINHA_DADOS + i,
           data: disp[i][0],
           categoria: disp[i][1],
           descricao: disp[i][2],
@@ -410,6 +551,8 @@ function lerDadosCompletos() {
     fundo: fundo,
     acerto: acerto,
     registo: lerRegisto(ss),
+    acertos: lerAcertos(ss),
+    acesso: acesso || { protegido: false, nome: '', email: '' },
     trabalhos: trabalhos,
     despesas: despesas
   };
