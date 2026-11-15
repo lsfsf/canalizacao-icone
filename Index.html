@@ -127,7 +127,7 @@
 
   <div id="aviso-acesso" style="display:none; background:#78350f; color:#fde68a; font-size:12px; padding:8px 14px; cursor:pointer;" onclick="fecharAvisoAcesso()">
     ⚠ Acesso sem proteção: qualquer pessoa com o link e uma conta Google pode usar esta app.
-    Para proteger, preenche a aba "Utilizadores" da folha. (toca para fechar)
+    Para proteger, define um código para cada sócio na aba "Utilizadores" da folha. (toca para fechar)
   </div>
 
   <div class="modal-fundo" id="editor-fundo">
@@ -302,6 +302,7 @@
         <div class="row-line" style="margin-top:8px;">
           <span>A usar como: <strong id="hist-quem"></strong></span>
           <button class="btn-mini" id="btn-mudar-quem" onclick="escolherUtilizador()">Mudar</button>
+          <button class="btn-mini" id="btn-sair" style="display:none;" onclick="sairDoTelemovel()">Sair</button>
         </div>
       </div>
       <div class="card-title" style="margin:14px 2px 8px;">Acertos fechados</div>
@@ -357,7 +358,7 @@
   <script>
     // Janelas dentro da app (substituem alert/confirm/prompt, que no Apps Script
     // mostram o título "Uma página incorporada em ...googleusercontent.com diz").
-    function abrirModal({ titulo, texto, tipo, comCancelar, comInput, valorInicial, textoOk, textoCancelar }) {
+    function abrirModal({ titulo, texto, tipo, comCancelar, comInput, valorInicial, textoOk, textoCancelar, teclado }) {
       return new Promise(resolve => {
         const fundo = document.getElementById('modal-fundo');
         const modal = document.getElementById('modal');
@@ -369,6 +370,7 @@
         document.getElementById('modal-texto').textContent = texto || '';
         input.style.display = comInput ? 'block' : 'none';
         input.value = valorInicial || '';
+        input.inputMode = teclado || 'decimal';
         cancelar.style.display = comCancelar ? 'block' : 'none';
         cancelar.textContent = textoCancelar || 'Cancelar';
         ok.textContent = textoOk || 'OK';
@@ -416,15 +418,41 @@
       mostrarToast('A ler folha Google...');
       google.script.run
         .withSuccessHandler(res => { esconderToast(); renderizar(res); })
-        .withFailureHandler(err => { esconderToast(); avisar(textoErro('Erro ao ler a folha: ', err)); })
-        .apiLerDados();
+        .withFailureHandler(err => { esconderToast(); falhou(err, 'Erro ao ler a folha: '); })
+        .apiLerDados(codigoAtual());
     }
 
     // Mensagens de acesso (ACESSO: ...) são mostradas sem prefixo técnico.
     function textoErro(prefixo, err) {
       const m = String((err && err.message) || err || '');
-      const i = m.indexOf('ACESSO:');
+      const i = m.search(/ACESSO:|CODIGO:/);
       return i !== -1 ? m.slice(i + 7).trim() : prefixo + m;
+    }
+
+    // Código de acesso (só é pedido se a folha tiver códigos definidos). Fica guardado neste telemóvel.
+    let codigoMem = '';
+    function codigoAtual() {
+      try { return localStorage.getItem('lp_codigo') || codigoMem; } catch (e) { return codigoMem; }
+    }
+    function guardarCodigo(c) {
+      codigoMem = c;
+      try { localStorage.setItem('lp_codigo', c); } catch (e) {}
+    }
+    async function pedirCodigo(mensagem) {
+      const c = await abrirModal({ titulo: 'Código de acesso', texto: mensagem || 'Escreve o teu código de acesso.',
+        comInput: true, textoOk: 'Entrar', teclado: 'text' });
+      guardarCodigo(String(c || '').trim());
+      carregarDados();
+    }
+    function sairDoTelemovel() {
+      codigoMem = '';
+      try { localStorage.removeItem('lp_codigo'); } catch (e) {}
+      carregarDados();
+    }
+    // Erro vindo do servidor: se for do código, pede-o outra vez; senão mostra o aviso.
+    function falhou(err, prefixo) {
+      if (String((err && err.message) || '').indexOf('CODIGO:') !== -1) pedirCodigo(textoErro('', err));
+      else avisar(textoErro(prefixo, err));
     }
     let avisoFechado = false;
     function fecharAvisoAcesso() { avisoFechado = true; document.getElementById('aviso-acesso').style.display = 'none'; }
@@ -463,6 +491,7 @@
     function enviarAcao(payload) {
       if (aGravar) return false;
       payload.utilizador = quemAtual();
+      payload.codigo = codigoAtual();
       bloquearBotoes(true);
       mostrarToast('A gravar na folha...');
       google.script.run
@@ -475,7 +504,7 @@
               ' despesas liquidadas.\nNovo fundo do envelope: ' + eur(r.reserva), 'sucesso');
           }
         })
-        .withFailureHandler(err => { esconderToast(); bloquearBotoes(false); avisar(textoErro('Erro ao gravar: ', err)); })
+        .withFailureHandler(err => { esconderToast(); bloquearBotoes(false); falhou(err, 'Erro ao gravar: '); })
         .apiGuardarDados(payload);
       return true;
     }
@@ -584,9 +613,10 @@
     function renderizar(dados) {
       ultimoDados = dados;
       const ac = dados.acesso || {};
-      if (ac.protegido) quemMem = ac.nome || ac.email;
+      if (ac.protegido) quemMem = ac.nome;
       else if (!quemAtual() && !perguntouQuem) { perguntouQuem = true; escolherUtilizador(); }
       document.getElementById('btn-mudar-quem').style.display = ac.protegido ? 'none' : '';
+      document.getElementById('btn-sair').style.display = ac.protegido ? '' : 'none';
       document.getElementById('aviso-acesso').style.display = (!ac.protegido && !avisoFechado) ? 'block' : 'none';
       const obras = dados.trabalhos || [];
       const despesas = dados.despesas || [];

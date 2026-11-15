@@ -31,13 +31,6 @@ const CEL_ACERTO = {
 const CEL_FUNDO = { inicial: 'C6', gastoFundo: 'C7', troco: 'C8', saldoFisico: 'C9' };
 
 function doGet() {
-  try {
-    verificarAcesso(SpreadsheetApp.getActiveSpreadsheet());
-  } catch (err) {
-    return HtmlService.createHtmlOutput(
-      '<div style="font-family:sans-serif;padding:24px;max-width:480px;margin:auto">' +
-      '<h3>Acesso não autorizado</h3><p>' + escHtml(textoErroAcesso(err)) + '</p></div>');
-  }
   const nomesPossiveis = ['Index', 'index'];
   let html = null;
   for (let i = 0; i < nomesPossiveis.length; i++) {
@@ -63,13 +56,14 @@ function doGet() {
   return html;
 }
 
-function apiLerDados() {
-  const acesso = verificarAcesso(SpreadsheetApp.getActiveSpreadsheet());
+// A página (doGet) não contém dados: os dados só saem pelas duas funções abaixo, que exigem o código.
+function apiLerDados(codigo) {
+  const acesso = verificarAcesso(SpreadsheetApp.getActiveSpreadsheet(), codigo);
   return lerDadosCompletos(acesso);
 }
 
 function apiGuardarDados(payload) {
-  const acesso = verificarAcesso(SpreadsheetApp.getActiveSpreadsheet());
+  const acesso = verificarAcesso(SpreadsheetApp.getActiveSpreadsheet(), payload && payload.codigo);
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
@@ -80,10 +74,14 @@ function apiGuardarDados(payload) {
 }
 
 // ---------- Controlo de acesso ----------
-// A aba "Utilizadores" (coluna A = email, coluna B = nome) lista quem pode usar a app.
-// Sem emails na lista, a app funciona sem proteção (como antes). Com emails, só esses entram,
-// e o nome (Luís/Paulo) vem do email, não do que a pessoa escolhe.
-// Requer a implementação "Executar como: utilizador que acede" para o Google dizer quem é.
+// A aba "Utilizadores" (coluna A = nome, coluna B = código de acesso) diz quem pode usar a app.
+// Vazia: a app funciona sem proteção (como antes). Com códigos: só entra quem tiver um código
+// válido, e o nome de quem altera vem do código. Não exige que os sócios tenham acesso à folha:
+// a implementação fica "Executar como: Eu" e o código é pedido uma vez em cada telemóvel.
+// Os erros que começam por "CODIGO:" fazem a app pedir o código; os "ACESSO:" só mostram a mensagem.
+
+const MAX_FALHAS_CODIGO = 8;      // códigos errados seguidos antes de bloquear
+const BLOQUEIO_SEGUNDOS = 600;    // duração do bloqueio (10 minutos)
 
 function lerUtilizadores(ss) {
   const sh = ss.getSheetByName(SHEET_UTILIZADORES);
@@ -91,29 +89,35 @@ function lerUtilizadores(ss) {
   const ult = sh.getLastRow();
   if (ult < 2) return [];
   return sh.getRange(2, 1, ult - 1, 2).getValues()
-    .map(r => ({ email: String(r[0]).trim().toLowerCase(), nome: String(r[1]).trim() }))
-    .filter(u => u.email.indexOf('@') > 0);
+    .map(r => ({ nome: String(r[0]).trim(), codigo: String(r[1]).trim() }))
+    .filter(u => u.nome || u.codigo);
 }
 
-function verificarAcesso(ss) {
-  if (!ss) throw new Error('ACESSO: Sem acesso à folha. Pede para partilharem a folha com o teu email Google.');
-  const lista = lerUtilizadores(ss);
-  if (!lista.length) return { protegido: false, nome: '', email: '' };
-  let email = '';
-  try { email = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase(); } catch (e) {}
-  if (!email) {
-    throw new Error('ACESSO: A proteção está ligada, mas a app não consegue ver quem és. ' +
-      'Na implementação do Apps Script escolhe "Executar como: utilizador que acede" e abre a app com a tua conta Google.');
+function verificarAcesso(ss, codigo) {
+  if (!ss) throw new Error('ACESSO: Não foi possível abrir a folha.');
+  const linhas = lerUtilizadores(ss);
+  if (!linhas.length) return { protegido: false, nome: '' };
+
+  const validos = linhas.filter(u => u.nome && u.codigo.length >= 6);
+  if (validos.length !== linhas.length) {
+    throw new Error('ACESSO: A aba "Utilizadores" está mal preenchida: cada linha precisa de um nome e de um código com pelo menos 6 caracteres.');
   }
-  const u = lista.find(x => x.email === email);
-  if (!u) throw new Error('ACESSO: O email ' + email + ' não tem autorização para usar esta app.');
-  return { protegido: true, nome: u.nome || email, email: email };
-}
+  if (new Set(validos.map(u => u.codigo)).size !== validos.length) {
+    throw new Error('ACESSO: Dois sócios têm o mesmo código na aba "Utilizadores".');
+  }
 
-function textoErroAcesso(err) { return String(err && err.message ? err.message : err).replace(/^ACESSO:\s*/, ''); }
-
-function escHtml(t) {
-  return String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const cache = CacheService.getScriptCache();
+  const falhas = Number(cache.get('falhas_codigo') || 0);
+  if (falhas >= MAX_FALHAS_CODIGO) {
+    throw new Error('CODIGO: Demasiadas tentativas erradas. Tenta outra vez daqui a 10 minutos.');
+  }
+  const c = String(codigo == null ? '' : codigo).trim();
+  const u = c ? validos.find(x => x.codigo === c) : null;
+  if (!u) {
+    if (c) cache.put('falhas_codigo', String(falhas + 1), BLOQUEIO_SEGUNDOS);
+    throw new Error('CODIGO: ' + (c ? 'Código incorreto.' : 'Escreve o teu código de acesso.'));
+  }
+  return { protegido: true, nome: u.nome };
 }
 
 function encontrarAba(ss, nomesPossiveis) {
@@ -552,7 +556,7 @@ function lerDadosCompletos(acesso) {
     acerto: acerto,
     registo: lerRegisto(ss),
     acertos: lerAcertos(ss),
-    acesso: acesso || { protegido: false, nome: '', email: '' },
+    acesso: acesso || { protegido: false, nome: '' },
     trabalhos: trabalhos,
     despesas: despesas
   };
