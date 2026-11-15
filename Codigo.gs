@@ -356,13 +356,14 @@ function registar(ss, quem, acao, detalhe) {
   try {
     let sh = ss.getSheetByName(SHEET_REGISTO);
     if (!sh) {
-      sh = ss.insertSheet(SHEET_REGISTO);
+      sh = ss.insertSheet(SHEET_REGISTO, ss.getSheets().length);
       sh.getRange(1, 1, 1, 4).setValues([['Data e hora', 'Quem', 'Ação', 'Detalhe']]).setFontWeight('bold');
       sh.setFrozenRows(1);
       sh.getRange('A:A').setNumberFormat('dd/MM/yyyy HH:mm:ss');
       sh.setColumnWidth(1, 150); sh.setColumnWidth(2, 80); sh.setColumnWidth(3, 220); sh.setColumnWidth(4, 620);
     }
     sh.appendRow([new Date(), quem, acao, detalhe]);
+    sh.getRange(2, 1, sh.getLastRow() - 1, 1).setNumberFormat('dd/MM/yyyy HH:mm:ss'); // o appendRow muda o formato
   } catch (err) {
     console.error('Não foi possível registar a alteração: ' + err); // nunca impede a gravação
   }
@@ -468,7 +469,7 @@ function fecharCiclo(ss, hoje, quem) {
 function registarFecho(ss, quem, resumo, foto) {
   let sh = ss.getSheetByName(SHEET_FECHOS);
   if (!sh) {
-    sh = ss.insertSheet(SHEET_FECHOS);
+    sh = ss.insertSheet(SHEET_FECHOS, ss.getSheets().length);
     sh.getRange(1, 1, 1, 12).setValues([['Data e hora', 'Fechado por', 'Obras cobradas (€)', 'Gastos do fundo (€)',
       'Despesas do Luís (€)', 'Despesas do Paulo (€)', 'Dinheiro na mesa (€)', 'Ficou no envelope (€)',
       'Luís recebeu (€)', 'Paulo recebeu (€)', 'Obras fechadas', 'Despesas liquidadas']]).setFontWeight('bold');
@@ -479,6 +480,9 @@ function registarFecho(ss, quem, resumo, foto) {
   }
   sh.appendRow([new Date(), quem, foto.cobrado, foto.gastoFundo, foto.despLuis, foto.despPaulo, foto.mesa,
     resumo.reserva, resumo.luis, resumo.paulo, resumo.obras.join(', '), resumo.despesasLiquidadas]);
+  const n = sh.getLastRow() - 1;
+  sh.getRange(2, 1, n, 1).setNumberFormat('dd/MM/yyyy HH:mm');
+  sh.getRange(2, 3, n, 8).setNumberFormat('#,##0.00 "€"');
 }
 
 // Últimos acertos fechados (mais recentes primeiro).
