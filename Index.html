@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Canalização • Luís & Paulo</title>
+  <style>
+    :root {
+      --bg: #0f172a; --card: #1e293b; --border: #334155; --text: #f8fafc;
+      --muted: #94a3b8; --primary: #0ea5e9; --success: #10b981; --warning: #f59e0b; --danger: #ef4444;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background: var(--bg); color: var(--text); padding-bottom: 85px; }
+    header {
+      background: #020617; padding: 14px 16px; border-bottom: 1px solid var(--border);
+      display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 20;
+    }
+    header h1 { font-size: 16px; font-weight: 700; color: var(--primary); }
+    header small { display: block; font-size: 11px; color: var(--muted); }
+    .btn-sync {
+      background: var(--card); color: var(--text); border: 1px solid var(--border);
+      padding: 8px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer;
+    }
+    .container { padding: 14px; max-width: 600px; margin: 0 auto; }
+    .kpi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+    .kpi { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px; }
+    .kpi-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px; }
+    .kpi-val { font-size: 20px; font-weight: 800; margin-top: 4px; }
+    .kpi-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .c-green { color: var(--success); } .c-blue { color: var(--primary); }
+    .c-warn { color: var(--warning); } .c-red { color: var(--danger); }
+    .negativo { color: var(--danger) !important; }
+    .section { display: none; } .section.active { display: block; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px; margin-bottom: 12px; }
+    .card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; }
+    .card-title { font-size: 15px; font-weight: 700; }
+    .badge { padding: 3px 8px; border-radius: 99px; font-size: 11px; font-weight: 700; }
+    .b-ok { background: rgba(16,185,129,0.18); color: #34d399; }
+    .b-pend { background: rgba(245,158,11,0.18); color: #fbbf24; }
+    .b-info { background: rgba(14,165,233,0.18); color: #38bdf8; }
+    .form-group { margin-bottom: 10px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip {
+      background: #0f172a; color: var(--text); border: 1px solid var(--border);
+      padding: 8px 10px; border-radius: 99px; font-size: 13px; cursor: pointer;
+    }
+    .chip.sel { background: rgba(14,165,233,0.18); border-color: var(--primary); color: #38bdf8; font-weight: 700; }
+    .chip .num {
+      display: inline-block; min-width: 18px; height: 18px; line-height: 18px; border-radius: 9px;
+      background: var(--primary); color: #020617; font-size: 11px; font-weight: 800; text-align: center; margin-right: 4px;
+    }
+    .item-trab { display: grid; grid-template-columns: auto 1fr 100px auto; gap: 8px; align-items: center; margin-top: 8px; }
+    .item-trab .nome { font-size: 13px; }
+    .item-trab input { padding: 8px 10px; font-size: 14px; text-align: right; }
+    .item-trab .num {
+      display: inline-block; min-width: 20px; height: 20px; line-height: 20px; border-radius: 10px;
+      background: var(--primary); color: #020617; font-size: 11px; font-weight: 800; text-align: center;
+    }
+    .modal.largo { max-height: 90vh; overflow-y: auto; }
+    .item-x { background: none; border: none; color: var(--muted); font-size: 18px; cursor: pointer; padding: 0 4px; }
+    .lista-num { font-size: 13px; color: var(--text); white-space: pre-line; background: #0f172a;
+      border: 1px dashed var(--border); border-radius: 8px; padding: 8px 10px; margin-top: 8px; }
+    label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; font-weight: 600; }
+    input, select {
+      width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border);
+      background: #0f172a; color: var(--text); font-size: 14px;
+    }
+    .btn-primary {
+      width: 100%; background: var(--primary); color: #020617; font-weight: 800;
+      border: none; padding: 12px; border-radius: 10px; font-size: 14px; cursor: pointer; margin-top: 6px;
+    }
+    .btn-pay {
+      margin-top: 10px; width: 100%; background: rgba(16,185,129,0.2); color: #34d399;
+      border: 1px solid #059669; padding: 8px; border-radius: 8px; font-weight: 700; font-size: 12px; cursor: pointer;
+    }
+    .btn-mini {
+      background: #334155; color: #f8fafc; border: none; padding: 3px 8px;
+      border-radius: 6px; font-size: 11px; cursor: pointer; margin-left: 6px;
+    }
+    .acerto-box { border-left: 4px solid var(--primary); padding-left: 12px; margin: 10px 0; }
+    .row-line { display: flex; justify-content: space-between; align-items: center; font-size: 13px; padding: 6px 0; border-bottom: 1px dashed var(--border); }
+    .bottom-nav {
+      position: fixed; bottom: 0; left: 0; right: 0; background: #020617;
+      border-top: 1px solid var(--border); display: grid; grid-template-columns: repeat(4, 1fr); z-index: 30;
+    }
+    .nav-btn { background: none; border: none; color: var(--muted); padding: 10px 4px; font-size: 11px; font-weight: 600; cursor: pointer; }
+    .nav-btn.active { color: var(--primary); border-top: 2px solid var(--primary); }
+    .modal-fundo {
+      position: fixed; inset: 0; background: rgba(2,6,23,0.75); z-index: 100;
+      display: none; align-items: center; justify-content: center; padding: 16px;
+    }
+    .modal-fundo.aberto { display: flex; }
+    .modal {
+      background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+      width: 100%; max-width: 420px; padding: 18px;
+    }
+    .modal-titulo { font-size: 15px; font-weight: 800; margin-bottom: 8px; }
+    .modal-texto { font-size: 14px; color: var(--text); white-space: pre-line; line-height: 1.45; }
+    .modal input { margin-top: 12px; font-size: 18px; }
+    .modal-botoes { display: flex; gap: 8px; margin-top: 16px; }
+    .modal-botoes button {
+      flex: 1; padding: 12px; border-radius: 10px; font-size: 14px; font-weight: 800; cursor: pointer; border: none;
+    }
+    .btn-cancelar { background: #334155; color: var(--text); }
+    .btn-ok { background: var(--primary); color: #020617; }
+    .modal.erro .modal-titulo { color: var(--danger); }
+    .modal.sucesso .modal-titulo { color: var(--success); }
+    #status-toast {
+      position: fixed; top: 68px; left: 50%; transform: translateX(-50%);
+      background: #0284c7; color: white; padding: 8px 16px; border-radius: 99px;
+      font-size: 12px; font-weight: 700; display: none; z-index: 50;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div>
+      <h1>CANALIZAÇÃO • LUÍS & PAULO</h1>
+      <small id="sync-time">A ligar à Folha Google...</small>
+    </div>
+    <button class="btn-sync" onclick="carregarDados()">↻ Atualizar</button>
+  </header>
+
+  <div id="status-toast">A sincronizar...</div>
+
+  <div class="modal-fundo" id="editor-fundo">
+    <div class="modal largo">
+      <div class="modal-titulo" id="ed-titulo"></div>
+      <div id="ed-lista"></div>
+      <div class="form-group" style="margin-top:12px;">
+        <label id="ed-total-label">Valor total (€)</label>
+        <input type="text" inputmode="decimal" id="ed-total" style="margin-top:0;" oninput="atualizarTotalEditor()">
+      </div>
+      <div class="modal-botoes">
+        <button class="btn-cancelar" onclick="fecharEditor()">Cancelar</button>
+        <button class="btn-ok" onclick="gravarEditor()">Gravar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-fundo" id="modal-fundo">
+    <div class="modal" id="modal">
+      <div class="modal-titulo" id="modal-titulo"></div>
+      <div class="modal-texto" id="modal-texto"></div>
+      <input type="text" inputmode="decimal" id="modal-input" style="display:none;">
+      <div class="modal-botoes">
+        <button class="btn-cancelar" id="modal-cancelar">Cancelar</button>
+        <button class="btn-ok" id="modal-ok">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="kpi-grid">
+      <div class="kpi">
+        <div class="kpi-label">Dinheiro Vivo em Caixa</div>
+        <div class="kpi-val c-green" id="kpi-caixa">0,00 €</div>
+        <div class="kpi-sub" id="kpi-troco">Troco envelope: 0,00 €</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Obras Pendentes</div>
+        <div class="kpi-val c-warn" id="kpi-pendente">0,00 €</div>
+        <div class="kpi-sub" id="kpi-cobrado">Cobrado: 0,00 €</div>
+      </div>
+    </div>
+
+    <div id="tab-acerto" class="section active">
+      <div class="card">
+        <div class="card-title" style="color:var(--primary); margin-bottom:8px;">QUOTA A ENTREGAR AO LUÍS</div>
+        <div class="kpi-val c-green" id="luis-total">0,00 €</div>
+        <div class="kpi-sub" id="luis-total-tudo">Após cobrar tudo: 0,00 €</div>
+        <div class="acerto-box">
+          <div class="row-line"><span>Parte igual (50%):</span><strong id="luis-lucro">0,00 €</strong></div>
+          <div class="row-line"><span>Reembolso Portagens (Via Verde):</span><strong id="luis-vv">0,00 €</strong></div>
+          <div class="row-line"><span>Reembolso Despesas do Bolso:</span><strong id="luis-bolso">0,00 €</strong></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title" style="color:var(--primary); margin-bottom:8px;">QUOTA A ENTREGAR AO PAULO</div>
+        <div class="kpi-val c-green" id="paulo-total">0,00 €</div>
+        <div class="kpi-sub" id="paulo-total-tudo">Após cobrar tudo: 0,00 €</div>
+        <div class="acerto-box">
+          <div class="row-line"><span>Parte igual (50%):</span><strong id="paulo-lucro">0,00 €</strong></div>
+          <div class="row-line"><span>Reembolso Despesas do Bolso:</span><strong id="paulo-bolso">0,00 €</strong></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title" style="margin-bottom:8px;">Divisão do dinheiro na mesa</div>
+        <div class="row-line"><span>Dinheiro na mesa:</span><strong id="ac-mao">0,00 €</strong></div>
+        <div class="row-line"><span>(-) Despesas do Luís:</span><strong class="c-red" id="ac-desp-luis">0,00 €</strong></div>
+        <div class="row-line"><span>(-) Despesas do Paulo:</span><strong class="c-red" id="ac-desp-paulo">0,00 €</strong></div>
+        <div class="row-line"><span>(=) Sobra:</span><strong id="ac-sobra">0,00 €</strong></div>
+        <div class="row-line">
+          <span>(-) Fica no envelope (próximo ciclo):</span>
+          <div>
+            <strong class="c-blue" id="ac-reserva">0,00 €</strong>
+            <button class="btn-mini" onclick="alterarReserva()">✏️ Mudar</button>
+          </div>
+        </div>
+        <div class="row-line"><span>(=) A dividir 50/50:</span><strong class="c-green" id="ac-dividir">0,00 €</strong></div>
+        <div style="font-size:12px; margin-top:8px;" id="ac-conferencia"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title" style="margin-bottom:8px;">Envelope / Fundo de Caixa</div>
+        <div class="row-line">
+          <span>Fundo Inicial (Envelope):</span>
+          <div>
+            <strong id="res-fundo-ini">0,00 €</strong>
+            <button class="btn-mini" onclick="alterarFundo()">✏️ Mudar</button>
+          </div>
+        </div>
+        <div class="row-line"><span>(-) Gastos pagos pelo Fundo:</span><strong class="c-red" id="res-gasto-fundo">0,00 €</strong></div>
+        <div class="row-line"><span>(=) Troco Atual no Envelope:</span><strong class="c-blue" id="res-troco">0,00 €</strong></div>
+        <div class="row-line"><span>(+) Obras Recebidas em Mão:</span><strong class="c-green" id="res-obras-rec">0,00 €</strong></div>
+        <div class="row-line"><span>(=) Total Notas/Moedas na Mesa:</span><strong id="res-mesa">0,00 €</strong></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title" style="margin-bottom:6px;">Fechar ciclo</div>
+        <div style="font-size:12px; color:var(--muted);">
+          Usar depois de o dinheiro ter sido entregue. As obras recebidas passam a "Fechado",
+          as despesas a "Liquidado" e o fundo inicial do envelope passa a ser o valor que ficou no envelope.
+          Obras pendentes continuam abertas.
+        </div>
+        <button class="btn-primary" style="background:var(--warning);" onclick="fecharCiclo()">✓ Acerto feito — fechar ciclo</button>
+      </div>
+    </div>
+
+    <div id="tab-obras" class="section">
+      <div class="card">
+        <div class="card-title" style="margin-bottom:10px;">+ Registar Nova Obra</div>
+        <div class="form-group">
+          <label>Nome da Casa / Obra</label>
+          <input type="text" id="ob-nome" placeholder="Ex: Vivenda Sol Nascente">
+        </div>
+        <div class="form-group">
+          <label>Localidade & Cliente</label>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+            <input type="text" id="ob-local" placeholder="Ex: Sintra">
+            <input type="text" id="ob-cliente" placeholder="Nome Cliente">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Trabalhos realizados (toca pela ordem em que foram feitos)</label>
+          <div class="chips" id="ob-chips"></div>
+          <div style="display:grid; grid-template-columns:1fr auto; gap:8px; margin-top:8px;">
+            <input type="text" id="ob-outro" placeholder="Outro trabalho..." onkeydown="if(event.key==='Enter'){adicionarOutroTrabalho();}">
+            <button class="btn-mini" style="margin:0; padding:0 14px; font-size:13px;" onclick="adicionarOutroTrabalho()">+ Juntar</button>
+          </div>
+          <div id="ob-itens"></div>
+        </div>
+        <div class="form-group" style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+          <div>
+            <label id="ob-valor-label">Valor (€)</label>
+            <input type="number" step="0.01" id="ob-valor" placeholder="0.00">
+          </div>
+          <div>
+            <label>Estado Pagamento</label>
+            <select id="ob-estado">
+              <option value="Pendente">Pendente</option>
+              <option value="Recebido em Caixa">Recebido em Caixa</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn-primary" onclick="adicionarObra()">Gravar Obra na Folha</button>
+      </div>
+      <div id="lista-obras"></div>
+    </div>
+
+    <div id="tab-despesas" class="section">
+      <div class="card">
+        <div class="card-title" style="margin-bottom:10px;">+ Registar Despesa ou Portagem</div>
+        <div class="form-group" style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+          <div>
+            <label>Categoria</label>
+            <select id="de-cat" onchange="ajustarOrigemDespesa()">
+              <option value="Material Stock">Material Stock</option>
+              <option value="Combustível">Combustível</option>
+              <option value="Alimentação">Alimentação</option>
+              <option value="Portagens">Portagens</option>
+            </select>
+          </div>
+          <div>
+            <label>Quem Pagou / Origem</label>
+            <select id="de-origem">
+              <option value="Fundo Caixa">Fundo Caixa (Envelope)</option>
+              <option value="Luís - Via Verde">Luís - Via Verde</option>
+              <option value="Luís - Bolso">Luís - Bolso</option>
+              <option value="Paulo - Bolso">Paulo - Bolso</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Descrição / Fornecedor</label>
+          <input type="text" id="de-desc" placeholder="Ex: Leroy Merlin - Tubos e uniões">
+        </div>
+        <div class="form-group">
+          <label>Valor (€)</label>
+          <input type="number" step="0.01" id="de-valor" placeholder="0.00">
+        </div>
+        <button class="btn-primary" onclick="adicionarDespesa()">Gravar Despesa na Folha</button>
+      </div>
+      <div id="lista-despesas"></div>
+    </div>
+  </div>
+
+  <nav class="bottom-nav">
+    <button class="nav-btn active" onclick="mudarTab('acerto', this)">⚖️ Acerto 50/50</button>
+    <button class="nav-btn" onclick="mudarTab('obras', this)">🔧 Obras</button>
+    <button class="nav-btn" onclick="mudarTab('despesas', this)">🧾 Despesas</button>
+    <button class="nav-btn" onclick="carregarDados()">🔄 Sincronizar</button>
+  </nav>
+
+  <script>
+    // Janelas dentro da app (substituem alert/confirm/prompt, que no Apps Script
+    // mostram o título "Uma página incorporada em ...googleusercontent.com diz").
+    function abrirModal({ titulo, texto, tipo, comCancelar, comInput, valorInicial, textoOk }) {
+      return new Promise(resolve => {
+        const fundo = document.getElementById('modal-fundo');
+        const modal = document.getElementById('modal');
+        const input = document.getElementById('modal-input');
+        const ok = document.getElementById('modal-ok');
+        const cancelar = document.getElementById('modal-cancelar');
+        modal.className = 'modal' + (tipo ? ' ' + tipo : '');
+        document.getElementById('modal-titulo').textContent = titulo || '';
+        document.getElementById('modal-texto').textContent = texto || '';
+        input.style.display = comInput ? 'block' : 'none';
+        input.value = valorInicial || '';
+        cancelar.style.display = comCancelar ? 'block' : 'none';
+        ok.textContent = textoOk || 'OK';
+        fundo.classList.add('aberto');
+        if (comInput) setTimeout(() => { input.focus(); input.select(); }, 50);
+        const fechar = (valor) => {
+          fundo.classList.remove('aberto');
+          ok.onclick = cancelar.onclick = input.onkeydown = null;
+          resolve(valor);
+        };
+        ok.onclick = () => fechar(comInput ? input.value : true);
+        cancelar.onclick = () => fechar(comInput ? null : false);
+        input.onkeydown = (e) => { if (e.key === 'Enter') ok.onclick(); };
+      });
+    }
+    function avisar(texto, tipo) {
+      const titulos = { erro: 'Atenção', sucesso: 'Feito' };
+      return abrirModal({ titulo: titulos[tipo] || 'Aviso', texto: texto, tipo: tipo || 'erro' });
+    }
+    function confirmar(titulo, texto, textoOk) {
+      return abrirModal({ titulo: titulo, texto: texto, comCancelar: true, textoOk: textoOk || 'Confirmar' });
+    }
+    function pedirValor(titulo, texto, valorInicial) {
+      return abrirModal({ titulo: titulo, texto: texto, comCancelar: true, comInput: true, valorInicial: valorInicial, textoOk: 'Gravar' });
+    }
+    function lerEuros(txt) { return parseFloat(String(txt).replace(/\s|€/g, '').replace(',', '.')); }
+    function formatarInput(v) { return String(Number(v || 0)).replace('.', ','); }
+
+    function mostrarToast(msg) {
+      const t = document.getElementById('status-toast');
+      t.textContent = msg; t.style.display = 'block';
+    }
+    function esconderToast() { document.getElementById('status-toast').style.display = 'none'; }
+    function eur(v) {
+      return Number(v || 0).toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+    }
+    function mudarTab(nome, btn) {
+      document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+      document.getElementById('tab-' + nome).classList.add('active');
+      document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+      if (btn) btn.classList.add('active');
+    }
+
+    function carregarDados() {
+      mostrarToast('A ler folha Google...');
+      google.script.run
+        .withSuccessHandler(res => { esconderToast(); renderizar(res); })
+        .withFailureHandler(err => { esconderToast(); avisar('Erro ao ler a folha: ' + err.message); })
+        .apiLerDados();
+    }
+
+    let aGravar = false;
+    function bloquearBotoes(sim) {
+      aGravar = sim;
+      document.querySelectorAll('.btn-primary, .btn-pay, .btn-mini').forEach(b => {
+        b.disabled = sim; b.style.opacity = sim ? '0.5' : '';
+      });
+    }
+
+    // Devolve true se o pedido foi enviado; false se já havia uma gravação em curso.
+    function enviarAcao(payload) {
+      if (aGravar) return false;
+      bloquearBotoes(true);
+      mostrarToast('A gravar na folha...');
+      google.script.run
+        .withSuccessHandler(res => {
+          esconderToast(); bloquearBotoes(false);
+          if (res && res.data) renderizar(res.data);
+          const r = res && res.resultado;
+          if (r && payload.action === 'fecharCiclo') {
+            avisar('Ciclo fechado em ' + r.data + '.\n' + r.obrasFechadas + ' obras fechadas, ' + r.despesasLiquidadas +
+              ' despesas liquidadas.\nNovo fundo do envelope: ' + eur(r.reserva), 'sucesso');
+          }
+        })
+        .withFailureHandler(err => { esconderToast(); bloquearBotoes(false); avisar('Erro ao gravar: ' + err.message); })
+        .apiGuardarDados(payload);
+      return true;
+    }
+
+    function esc(v) {
+      return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    async function alterarFundo() {
+      const atual = ultimoDados && ultimoDados.fundo ? ultimoDados.fundo.inicial : 0;
+      const novo = await pedirValor('Fundo inicial do envelope', 'Quanto dinheiro havia no envelope no início do ciclo (€)? Escreve 0 se estava vazio.', formatarInput(atual));
+      if (novo === null) return;
+      const val = lerEuros(novo);
+      if (isNaN(val) || val < 0) return avisar('Valor inválido.');
+      enviarAcao({ action: 'setFundoInicial', valor: val });
+    }
+
+    async function alterarReserva() {
+      const atual = ultimoDados && ultimoDados.acerto ? ultimoDados.acerto.reserva : 0;
+      const novo = await pedirValor('Fica no envelope', 'Quanto dinheiro fica no envelope para o próximo ciclo (€)?', formatarInput(atual));
+      if (novo === null) return;
+      const val = lerEuros(novo);
+      if (isNaN(val) || val < 0) return avisar('Valor inválido.');
+      enviarAcao({ action: 'setReserva', valor: val });
+    }
+
+    async function fecharCiclo() {
+      const a = ultimoDados && ultimoDados.acerto;
+      if (!a) return avisar('Sem dados do acerto. Carrega em Atualizar.');
+      if (String(a.conferencia).indexOf('100%') !== 0) return avisar('O acerto não bate certo: ' + a.conferencia);
+      const msg = 'O dinheiro já foi entregue?\n\n' +
+        'Luís: ' + eur(a.totalLuis) + '\n' +
+        'Paulo: ' + eur(a.totalPaulo) + '\n' +
+        'Fica no envelope: ' + eur(a.reserva) + '\n\n' +
+        'Isto fecha o ciclo na folha e não se desfaz pela app.';
+      if (!(await confirmar('Fechar ciclo', msg, 'Fechar ciclo'))) return;
+      enviarAcao({ action: 'fecharCiclo' });
+    }
+
+    let ultimoDados = null;
+    function setTxt(id, txt) { document.getElementById(id).textContent = txt; }
+    // Valor em euros; fica a vermelho quando é negativo (ex.: ainda não entrou dinheiro).
+    function setEur(id, v, prefixo) {
+      const el = document.getElementById(id);
+      el.textContent = (prefixo || '') + eur(v);
+      el.classList.toggle('negativo', Math.round(Number(v || 0) * 100) < 0);
+    }
+
+    function cartaoObra(o) {
+      const pago = String(o.estadoPagamento).toLowerCase().indexOf('recebido') !== -1;
+      const fechado = o.ciclo === 'Fechado';
+      const semValor = o.valor === null || o.valor === undefined || o.valor === '';
+      return `
+          <div class="card" style="${fechado ? 'opacity:0.6' : ''}">
+            <div class="card-header">
+              <div>
+                <div class="card-title">${esc(o.id)} • ${o.obra ? esc(o.obra) : '<span style="color:var(--muted)">(sem nome)</span>'}</div>
+                <small style="color:var(--muted)">${[o.localidade, o.cliente ? 'Cliente: ' + o.cliente : ''].filter(Boolean).map(esc).join(' • ')}</small>
+              </div>
+              <span class="badge ${fechado ? 'b-info' : (pago ? 'b-ok' : 'b-pend')}">${fechado ? 'Fechado' : esc(o.estadoPagamento)}</span>
+            </div>
+            <div style="font-size:13px; color:var(--muted); margin:6px 0; white-space:pre-line;">${esc(o.descricao)}</div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
+              ${semValor ? '<strong style="font-size:15px; color:var(--warning);">Sem valor</strong>' : `<strong style="font-size:16px;">${eur(o.valor)}</strong>`}
+              <small style="color:var(--muted)">Início: ${esc(o.dataInicio)}</small>
+            </div>
+            ${!fechado ? `<button class="btn-pay" style="background:rgba(245,158,11,0.15); color:#fbbf24; border-color:#b45309;" onclick="definirValorObra('${esc(o.id)}')">€ ${semValor ? 'Definir valor' : 'Alterar valor'}</button>` : ''}
+            ${!pago && !semValor ? `<button class="btn-pay" onclick="marcarRecebida('${esc(o.id)}')">✓ Marcar como Recebido em Caixa</button>` : ''}
+          </div>`;
+    }
+
+    function cartaoDespesa(d) {
+      const liq = d.estado !== 'Aberto';
+      return `
+        <div class="card" style="${liq ? 'opacity:0.6' : ''}">
+          <div class="card-header">
+            <div>
+              <div class="card-title">${esc(d.categoria)}</div>
+              <small style="color:var(--muted)">${esc(d.data)}${liq ? ' • ' + esc(d.estado) : ''}</small>
+            </div>
+            <span class="badge b-info">${esc(d.origem)}</span>
+          </div>
+          <div style="font-size:13px; color:var(--muted); margin:6px 0;">${esc(d.descricao)}</div>
+          <strong style="font-size:16px; color:var(--danger);">- ${eur(d.valor)}</strong>
+        </div>`;
+    }
+
+    function listaComHistorico(abertos, fechados, fn, rotulo) {
+      let html = abertos.slice().reverse().map(fn).join('');
+      if (!abertos.length) html += '<div style="color:var(--muted); font-size:13px; padding:8px 2px;">Sem registos em aberto.</div>';
+      if (fechados.length) {
+        html += `<details style="margin-top:8px;"><summary style="color:var(--muted); font-size:13px; padding:8px 2px; cursor:pointer;">${rotulo} (${fechados.length})</summary>` +
+          fechados.slice().reverse().map(fn).join('') + '</details>';
+      }
+      return html;
+    }
+
+    function renderizar(dados) {
+      ultimoDados = dados;
+      const obras = dados.trabalhos || [];
+      const despesas = dados.despesas || [];
+      const a = dados.acerto;
+      const f = dados.fundo || {};
+      if (!a) {
+        avisar('Não encontrei a aba "Acerto de Contas (Luís & Paulo)" na folha.');
+        return;
+      }
+
+      // Detalhe do Luís (Via Verde vs bolso) a partir das despesas em aberto; os totais vêm da folha.
+      let luisVV = 0;
+      despesas.forEach(d => { if (d.estado === 'Aberto' && d.origem === 'Luís - Via Verde') luisVV += Number(d.valor || 0); });
+
+      setEur('kpi-caixa', a.dinheiroMao);
+      setTxt('kpi-troco', 'Troco no envelope: ' + eur(f.troco));
+      setTxt('kpi-pendente', eur(a.pendente));
+      setTxt('kpi-cobrado', 'Cobrado: ' + eur(a.cobrado));
+
+      setEur('luis-total', a.totalLuis);
+      setEur('luis-total-tudo', a.totalLuisTotal, 'Após cobrar tudo: ');
+      setEur('luis-lucro', a.metade);
+      setTxt('luis-vv', eur(luisVV));
+      setTxt('luis-bolso', eur(a.despLuis - luisVV));
+
+      setEur('paulo-total', a.totalPaulo);
+      setEur('paulo-total-tudo', a.totalPauloTotal, 'Após cobrar tudo: ');
+      setEur('paulo-lucro', a.metade);
+      setTxt('paulo-bolso', eur(a.despPaulo));
+
+      setEur('ac-mao', a.dinheiroMao);
+      setTxt('ac-desp-luis', '- ' + eur(a.despLuis));
+      setTxt('ac-desp-paulo', '- ' + eur(a.despPaulo));
+      setEur('ac-sobra', a.sobra);
+      setTxt('ac-reserva', eur(a.reserva));
+      setEur('ac-dividir', a.aDividir);
+      const ok = String(a.conferencia).indexOf('100%') === 0;
+      const conf = document.getElementById('ac-conferencia');
+      conf.textContent = (ok ? '✓ ' : '⚠ ') + a.conferencia;
+      conf.style.color = ok ? 'var(--success)' : 'var(--danger)';
+
+      setTxt('res-fundo-ini', eur(f.inicial));
+      setTxt('res-gasto-fundo', '- ' + eur(f.gastoFundo));
+      setEur('res-troco', f.troco);
+      setTxt('res-obras-rec', '+ ' + eur(a.cobrado));
+      setEur('res-mesa', f.saldoFisico);
+
+      document.getElementById('lista-obras').innerHTML = listaComHistorico(
+        obras.filter(o => o.ciclo !== 'Fechado'), obras.filter(o => o.ciclo === 'Fechado'), cartaoObra, 'Histórico de obras fechadas');
+      document.getElementById('lista-despesas').innerHTML = listaComHistorico(
+        despesas.filter(d => d.estado === 'Aberto'), despesas.filter(d => d.estado !== 'Aberto'), cartaoDespesa, 'Histórico de despesas liquidadas');
+
+      const hora = new Date().toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      setTxt('sync-time', 'Sincronizado às ' + hora);
+    }
+
+
+    // Trabalhos habituais: para mudar a lista, editar aqui.
+    const TRABALHOS_HABITUAIS = [
+      'Montagem de loiças',
+      'Montagem de contador',
+      'Montagem de boca de incêndio',
+      'Válvula de cunha elástica',
+      'Alimentação de água à casa',
+      'Rede de rega',
+      'Rede de água exterior',
+      'Ligação de tubagem debaixo da casa'
+    ];
+    // Cada trabalho escolhido tem um nome e um valor (texto, pode ficar vazio).
+    let trabalhosEscolhidos = [];
+
+    function valorDoItem(it) {
+      const v = lerEuros(it.valor);
+      return (String(it.valor).trim() === '' || isNaN(v)) ? null : v;
+    }
+
+    function desenharChips() {
+      const nomes = trabalhosEscolhidos.map(t => t.nome);
+      const extra = nomes.filter(n => TRABALHOS_HABITUAIS.indexOf(n) === -1);
+      document.getElementById('ob-chips').innerHTML = TRABALHOS_HABITUAIS.concat(extra).map(n => {
+        const i = nomes.indexOf(n);
+        return `<button type="button" class="chip ${i !== -1 ? 'sel' : ''}" data-t="${esc(n)}" onclick="alternarTrabalho(this.dataset.t)">` +
+          (i !== -1 ? `<span class="num">${i + 1}</span>` : '') + esc(n) + '</button>';
+      }).join('');
+      document.getElementById('ob-itens').innerHTML = trabalhosEscolhidos.map((it, i) =>
+        `<div class="item-trab">
+           <span class="num">${i + 1}</span>
+           <span class="nome">${esc(it.nome)}</span>
+           <input type="text" inputmode="decimal" placeholder="€" value="${esc(it.valor)}" oninput="definirValorItem(${i}, this.value)">
+           <button type="button" class="item-x" onclick="removerTrabalho(${i})" aria-label="Tirar">✕</button>
+         </div>`).join('');
+      atualizarTotal();
+    }
+
+    function alternarTrabalho(nome) {
+      const i = trabalhosEscolhidos.findIndex(t => t.nome === nome);
+      if (i === -1) trabalhosEscolhidos.push({ nome: nome, valor: '' }); else trabalhosEscolhidos.splice(i, 1);
+      desenharChips();
+    }
+
+    function removerTrabalho(i) { trabalhosEscolhidos.splice(i, 1); desenharChips(); }
+
+    function definirValorItem(i, txt) {
+      trabalhosEscolhidos[i].valor = txt;
+      atualizarTotal(); // não redesenha, para não perder o foco do teclado
+    }
+
+    function adicionarOutroTrabalho() {
+      const campo = document.getElementById('ob-outro');
+      const t = campo.value.trim();
+      if (!t) return;
+      if (!trabalhosEscolhidos.some(x => x.nome === t)) trabalhosEscolhidos.push({ nome: t, valor: '' });
+      campo.value = '';
+      desenharChips();
+    }
+
+    // Soma dos valores dos trabalhos; null se nenhum trabalho tem valor.
+    function somaDe(itens) {
+      const valores = itens.map(valorDoItem).filter(v => v !== null);
+      return valores.length ? valores.reduce((a, b) => a + b, 0) : null;
+    }
+    function somaTrabalhos() { return somaDe(trabalhosEscolhidos); }
+
+    // Com valores nos trabalhos, o valor da obra é a soma (campo bloqueado);
+    // sem valores nos trabalhos, o valor da obra escreve-se à mão.
+    function atualizarTotal() {
+      const campo = document.getElementById('ob-valor');
+      const label = document.getElementById('ob-valor-label');
+      const soma = somaTrabalhos();
+      if (soma !== null) {
+        campo.value = soma.toFixed(2); campo.readOnly = true;
+        label.textContent = 'Valor total (soma dos trabalhos)';
+      } else {
+        if (campo.readOnly) campo.value = '';
+        campo.readOnly = false; label.textContent = 'Valor (€)';
+      }
+    }
+
+    // Uma linha por trabalho; o valor, se existir, fica escrito na linha.
+    function descricaoDeItens(itens) {
+      return itens.map((it, i) => {
+        const v = valorDoItem(it);
+        return (i + 1) + '. ' + it.nome + (v !== null ? ' — ' + eur(v) : '');
+      }).join('\n');
+    }
+    function descricaoNumerada() { return descricaoDeItens(trabalhosEscolhidos); }
+
+    // Lê uma descrição no formato "1. Trabalho — 120,00 €"; devolve null se for texto livre.
+    function itensDaDescricao(desc) {
+      const linhas = String(desc || '').split('\n').map(l => l.trim()).filter(Boolean);
+      if (!linhas.length || !linhas.every(l => /^\d+\.\s/.test(l))) return null;
+      return linhas.map(l => {
+        const m = l.match(/^\d+\.\s+(.*?)(?:\s+—\s+([\d\s.,]+?)\s*€)?$/);
+        return { nome: m[1], valor: m[2] ? m[2].replace(/\s/g, '') : '' };
+      });
+    }
+
+    // Editor de valores de uma obra já gravada (altera descrição e total em conjunto).
+    let editor = null; // { obra, itens }
+    function abrirEditorValores(o, itens) {
+      editor = { obra: o, itens: itens };
+      document.getElementById('ed-titulo').textContent = 'Valores da obra ' + o.id;
+      document.getElementById('ed-lista').innerHTML = itens.map((it, i) =>
+        `<div class="item-trab" style="grid-template-columns:auto 1fr 100px;">
+           <span class="num">${i + 1}</span>
+           <span class="nome">${esc(it.nome)}</span>
+           <input type="text" inputmode="decimal" placeholder="€" value="${esc(it.valor)}" oninput="valorEditor(${i}, this.value)">
+         </div>`).join('');
+      document.getElementById('ed-total').value = (o.valor !== null && o.valor !== '' && somaDe(itens) === null) ? formatarInput(o.valor) : '';
+      atualizarTotalEditor();
+      document.getElementById('editor-fundo').classList.add('aberto');
+    }
+    function valorEditor(i, txt) { editor.itens[i].valor = txt; atualizarTotalEditor(); }
+    function atualizarTotalEditor() {
+      const campo = document.getElementById('ed-total');
+      const soma = somaDe(editor.itens);
+      if (soma !== null) {
+        campo.value = formatarInput(soma.toFixed(2)); campo.readOnly = true;
+        document.getElementById('ed-total-label').textContent = 'Valor total (soma dos trabalhos)';
+      } else {
+        if (campo.readOnly) campo.value = '';
+        campo.readOnly = false;
+        document.getElementById('ed-total-label').textContent = 'Valor total (€)';
+      }
+    }
+    function fecharEditor() {
+      document.getElementById('editor-fundo').classList.remove('aberto');
+      editor = null;
+    }
+    function gravarEditor() {
+      const itens = editor.itens, o = editor.obra;
+      const invalido = itens.find(it => String(it.valor).trim() !== '' && (valorDoItem(it) === null || valorDoItem(it) < 0));
+      if (invalido) return avisar('Valor inválido em "' + invalido.nome + '".');
+      let total = somaDe(itens);
+      if (total === null) {
+        const txt = document.getElementById('ed-total').value.trim();
+        total = txt === '' ? null : lerEuros(txt);
+        if (total !== null && (isNaN(total) || total < 0)) return avisar('Valor inválido.');
+      }
+      const recebida = String(o.estadoPagamento).toLowerCase().indexOf('recebido') !== -1;
+      if (total === null && recebida) return avisar('Esta obra já está recebida: indica pelo menos um valor.');
+      const descricao = descricaoDeItens(itens), id = o.id;
+      fecharEditor();
+      enviarAcao({ action: 'setValorObra', idObra: id, valor: total, descricao: descricao });
+    }
+
+    function adicionarObra() {
+      adicionarOutroTrabalho(); // inclui o texto de "Outro trabalho" mesmo sem carregar em Juntar
+      const nomeObra = document.getElementById('ob-nome').value.trim();
+      const localidade = document.getElementById('ob-local').value.trim();
+      const nomeCliente = document.getElementById('ob-cliente').value.trim();
+      const itemInvalido = trabalhosEscolhidos.find(it => String(it.valor).trim() !== '' && (valorDoItem(it) === null || valorDoItem(it) < 0));
+      if (itemInvalido) return avisar('Valor inválido em "' + itemInvalido.nome + '".');
+      const soma = somaTrabalhos();
+      const valorTxt = document.getElementById('ob-valor').value.trim();
+      const valor = soma !== null ? soma : (valorTxt === '' ? null : lerEuros(valorTxt));
+      // Só é preciso algo que identifique a obra; o valor pode ficar para depois.
+      if (!nomeObra && !localidade && !nomeCliente && !trabalhosEscolhidos.length) {
+        return avisar('Escreve pelo menos o nome da obra, a localidade ou o cliente.');
+      }
+      if (valor !== null && (isNaN(valor) || valor < 0)) return avisar('Valor inválido.');
+      // Sem valor não pode estar recebida: fica Pendente até se definir o valor.
+      const estado = valor === null ? 'Pendente' : document.getElementById('ob-estado').value;
+      const enviado = enviarAcao({
+        action: 'addTrabalho',
+        nomeObra: nomeObra,
+        localidade: localidade,
+        nomeCliente: nomeCliente,
+        descricao: descricaoNumerada(),
+        valor: valor,
+        estadoPagamento: estado
+      });
+      if (!enviado) return;
+      document.getElementById('ob-nome').value = '';
+      document.getElementById('ob-local').value = '';
+      document.getElementById('ob-cliente').value = '';
+      trabalhosEscolhidos = []; document.getElementById('ob-outro').value = ''; desenharChips();
+      document.getElementById('ob-valor').value = '';
+    }
+
+    // Portagens são sempre Via Verde do Luís; "Luís - Via Verde" só serve para portagens.
+    function ajustarOrigemDespesa() {
+      const cat = document.getElementById('de-cat').value;
+      const orig = document.getElementById('de-origem');
+      const vv = orig.querySelector('option[value="Luís - Via Verde"]');
+      const desc = document.getElementById('de-desc');
+      if (cat === 'Portagens') {
+        vv.hidden = false; orig.value = 'Luís - Via Verde'; orig.disabled = true;
+        desc.placeholder = 'Opcional (ex: A1 Lisboa-Porto)';
+      } else {
+        vv.hidden = true; orig.disabled = false;
+        if (orig.value === 'Luís - Via Verde') orig.value = 'Fundo Caixa';
+        desc.placeholder = 'Ex: Leroy Merlin - Tubos e uniões';
+      }
+    }
+
+    function adicionarDespesa() {
+      const categoria = document.getElementById('de-cat').value;
+      let descricao = document.getElementById('de-desc').value.trim();
+      const valor = parseFloat(document.getElementById('de-valor').value);
+      if (categoria === 'Portagens' && !descricao) descricao = 'Portagem Via Verde';
+      if (isNaN(valor)) return avisar('Preenche o Valor da despesa.');
+      if (!descricao) return avisar('Preenche a Descrição da despesa.');
+      const enviado = enviarAcao({
+        action: 'addDespesa',
+        categoria: document.getElementById('de-cat').value,
+        quemPagou: document.getElementById('de-origem').value,
+        descricao: descricao,
+        valor: valor
+      });
+      if (!enviado) return;
+      document.getElementById('de-desc').value = '';
+      document.getElementById('de-valor').value = '';
+    }
+
+    async function definirValorObra(idObra) {
+      const o = (ultimoDados.trabalhos || []).find(x => x.id === idObra);
+      const itens = o ? itensDaDescricao(o.descricao) : null;
+      if (itens) return abrirEditorValores(o, itens);
+      const atual = o && o.valor !== null && o.valor !== '' ? formatarInput(o.valor) : '';
+      const novo = await pedirValor('Valor da obra ' + idObra, 'Qual o valor da obra (€)?', atual);
+      if (novo === null) return;
+      const val = lerEuros(novo);
+      if (isNaN(val) || val < 0) return avisar('Valor inválido.');
+      enviarAcao({ action: 'setValorObra', idObra: idObra, valor: val });
+    }
+
+    async function marcarRecebida(idObra) {
+      if (!(await confirmar('Obra recebida', 'O cliente pagou a obra ' + idObra + ' em dinheiro vivo?', 'Sim, recebido'))) return;
+      enviarAcao({ action: 'marcarObraRecebida', idObra: idObra });
+    }
+
+    window.onload = function () { ajustarOrigemDespesa(); desenharChips(); carregarDados(); };
+  </script>
+</body>
+</html>
