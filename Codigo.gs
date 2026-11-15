@@ -9,6 +9,7 @@ const SHEET_TRABALHOS = 'Trabalhos';
 const SHEET_DESPESAS = 'Despesas e Portagens';
 const SHEET_FUNDO = 'Fundo de Caixa';
 const SHEET_ACERTO = 'Acerto de Contas (Luís & Paulo)';
+const SHEET_REGISTO = 'Registo de Alterações';
 
 const PRIMEIRA_LINHA_DADOS = 5;
 
@@ -99,6 +100,8 @@ function guardarNaFolha(payload) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const hoje = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
   let resultado = null;
+  let acaoTxt = '', detalhe = '';
+  const quem = identificarUtilizador(payload.utilizador);
 
   if (payload.action === 'addTrabalho') {
     const sh = abaObrigatoria(ss, ABAS.trabalhos);
@@ -120,6 +123,10 @@ function guardarNaFolha(payload) {
       dataRec,
       'Aberto'
     ]]);
+    acaoTxt = 'Nova obra';
+    detalhe = novoId + ' • ' + (payload.nomeObra || payload.localidade || payload.nomeCliente || '(sem nome)') +
+      ' — ' + (temValor ? fmtEur(payload.valor) : 'sem valor') + ' (' + estado + ')' +
+      (payload.descricao ? ' — ' + String(payload.descricao).replace(/\n/g, ' | ') : '');
   }
   else if (payload.action === 'addDespesa') {
     // Regra do negócio: portagens são sempre Via Verde do Luís, e Via Verde só existe para portagens.
@@ -140,6 +147,8 @@ function guardarNaFolha(payload) {
       'Aberto',
       payload.notas || ''
     ]]);
+    acaoTxt = 'Nova despesa';
+    detalhe = categoria + ' — ' + (payload.descricao || '(sem descrição)') + ' — ' + fmtEur(payload.valor) + ' (' + quemPagou + ')';
   }
   else if (payload.action === 'marcarObraRecebida') {
     const sh = abaObrigatoria(ss, ABAS.trabalhos);
@@ -148,6 +157,8 @@ function guardarNaFolha(payload) {
       if (String(dados[i][0]).trim() === String(payload.idObra).trim()) {
         sh.getRange(i + 1, 8).setValue('Recebido em Caixa');
         sh.getRange(i + 1, 9).setValue(payload.dataRecebimento || hoje);
+        acaoTxt = 'Obra recebida';
+        detalhe = String(dados[i][0]) + ' • ' + (dados[i][2] || dados[i][3] || dados[i][4] || '') + ' — ' + fmtEur(dados[i][6]) + ' recebido em caixa';
         break;
       }
     }
@@ -163,8 +174,12 @@ function guardarNaFolha(payload) {
         if (!temValor && String(dados[i][7]) === 'Recebido em Caixa') {
           throw new Error('A obra ' + payload.idObra + ' já está recebida: precisa de valor.');
         }
+        const antes = dados[i][6] === '' ? 'sem valor' : fmtEur(dados[i][6]);
         sh.getRange(i + 1, 7).setValue(temValor ? Number(payload.valor) : '');
         if (payload.descricao !== undefined) sh.getRange(i + 1, 6).setValue(String(payload.descricao));
+        acaoTxt = 'Valor da obra alterado';
+        detalhe = String(dados[i][0]) + ' • ' + (dados[i][2] || dados[i][3] || dados[i][4] || '') + ': ' + antes + ' → ' +
+          (temValor ? fmtEur(payload.valor) : 'sem valor') + (payload.descricao !== undefined ? ' (valores por trabalho atualizados)' : '');
         encontrada = true;
         break;
       }
@@ -172,20 +187,77 @@ function guardarNaFolha(payload) {
     if (!encontrada) throw new Error('Obra ' + payload.idObra + ' não encontrada.');
   }
   else if (payload.action === 'setFundoInicial') {
-    abaObrigatoria(ss, ABAS.fundo).getRange(CEL_FUNDO.inicial).setValue(Number(payload.valor || 0));
+    const cel = abaObrigatoria(ss, ABAS.fundo).getRange(CEL_FUNDO.inicial);
+    const antes = fmtEur(cel.getValue());
+    cel.setValue(Number(payload.valor || 0));
+    acaoTxt = 'Fundo inicial alterado';
+    detalhe = antes + ' → ' + fmtEur(payload.valor);
   }
   else if (payload.action === 'setReserva') {
-    abaObrigatoria(ss, ABAS.acerto).getRange(CEL_ACERTO.reserva).setValue(Number(payload.valor || 0));
+    const cel = abaObrigatoria(ss, ABAS.acerto).getRange(CEL_ACERTO.reserva);
+    const antes = fmtEur(cel.getValue());
+    cel.setValue(Number(payload.valor || 0));
+    acaoTxt = 'Valor que fica no envelope alterado';
+    detalhe = antes + ' → ' + fmtEur(payload.valor);
   }
   else if (payload.action === 'fecharCiclo') {
     resultado = fecharCiclo(ss, hoje);
+    acaoTxt = 'Ciclo fechado';
+    detalhe = 'Luís ' + fmtEur(resultado.luis) + ' • Paulo ' + fmtEur(resultado.paulo) + ' • fica no envelope ' + fmtEur(resultado.reserva) +
+      ' • ' + resultado.obrasFechadas + ' obras fechadas, ' + resultado.despesasLiquidadas + ' despesas liquidadas';
   }
   else {
     throw new Error('Ação desconhecida: ' + payload.action);
   }
 
+  if (acaoTxt) registar(ss, quem, acaoTxt, detalhe);
   SpreadsheetApp.flush();
   return { status: 'ok', resultado: resultado, data: lerDadosCompletos() };
+}
+
+// ---------- Registo de alterações ----------
+
+function fmtEur(v) {
+  const n = Number(v);
+  if (v === '' || v === null || v === undefined || isNaN(n)) return '—';
+  return n.toFixed(2).replace('.', ',') + ' €';
+}
+
+// O nome vem da app (cada telemóvel escolhe "Luís" ou "Paulo"). Não é uma autenticação:
+// serve só para saber quem fez cada alteração.
+function identificarUtilizador(nome) {
+  const n = String(nome || '').trim();
+  if (n === 'Luís' || n === 'Paulo') return n;
+  let email = '';
+  try { email = Session.getActiveUser().getEmail(); } catch (e) {}
+  return email || 'Desconhecido';
+}
+
+function registar(ss, quem, acao, detalhe) {
+  try {
+    let sh = ss.getSheetByName(SHEET_REGISTO);
+    if (!sh) {
+      sh = ss.insertSheet(SHEET_REGISTO);
+      sh.getRange(1, 1, 1, 4).setValues([['Data e hora', 'Quem', 'Ação', 'Detalhe']]).setFontWeight('bold');
+      sh.setFrozenRows(1);
+      sh.getRange('A:A').setNumberFormat('dd/MM/yyyy HH:mm:ss');
+      sh.setColumnWidth(1, 150); sh.setColumnWidth(2, 80); sh.setColumnWidth(3, 220); sh.setColumnWidth(4, 620);
+    }
+    sh.appendRow([new Date(), quem, acao, detalhe]);
+  } catch (err) {
+    console.error('Não foi possível registar a alteração: ' + err); // nunca impede a gravação
+  }
+}
+
+// Últimas alterações (mais recentes primeiro).
+function lerRegisto(ss) {
+  const sh = ss.getSheetByName(SHEET_REGISTO);
+  if (!sh) return [];
+  const ult = sh.getLastRow();
+  if (ult < 2) return [];
+  const n = Math.min(60, ult - 1);
+  return sh.getRange(ult - n + 1, 1, n, 4).getDisplayValues().reverse()
+    .map(r => ({ data: r[0], quem: r[1], acao: r[2], detalhe: r[3] }));
 }
 
 /**
@@ -337,6 +409,7 @@ function lerDadosCompletos() {
     fundoInicial: fundo ? fundo.inicial : 0,
     fundo: fundo,
     acerto: acerto,
+    registo: lerRegisto(ss),
     trabalhos: trabalhos,
     despesas: despesas
   };

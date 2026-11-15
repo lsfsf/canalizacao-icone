@@ -272,6 +272,21 @@
       <div id="lista-obras"></div>
     </div>
 
+    <div id="tab-historico" class="section">
+      <div class="card">
+        <div class="card-title" style="margin-bottom:6px;">Histórico de alterações</div>
+        <div style="font-size:12px; color:var(--muted);">
+          As últimas 60 alterações feitas pela app, das mais recentes para as mais antigas.
+          A lista completa está na aba "Registo de Alterações" da folha.
+        </div>
+        <div class="row-line" style="margin-top:8px;">
+          <span>A usar como: <strong id="hist-quem"></strong></span>
+          <button class="btn-mini" onclick="escolherUtilizador()">Mudar</button>
+        </div>
+      </div>
+      <div id="lista-historico"></div>
+    </div>
+
     <div id="tab-despesas" class="section">
       <div class="card">
         <div class="card-title" style="margin-bottom:10px;">+ Registar Despesa ou Portagem</div>
@@ -313,13 +328,13 @@
     <button class="nav-btn active" onclick="mudarTab('acerto', this)">⚖️ Acerto 50/50</button>
     <button class="nav-btn" onclick="mudarTab('obras', this)">🔧 Obras</button>
     <button class="nav-btn" onclick="mudarTab('despesas', this)">🧾 Despesas</button>
-    <button class="nav-btn" onclick="carregarDados()">🔄 Sincronizar</button>
+    <button class="nav-btn" onclick="mudarTab('historico', this)">📜 Histórico</button>
   </nav>
 
   <script>
     // Janelas dentro da app (substituem alert/confirm/prompt, que no Apps Script
     // mostram o título "Uma página incorporada em ...googleusercontent.com diz").
-    function abrirModal({ titulo, texto, tipo, comCancelar, comInput, valorInicial, textoOk }) {
+    function abrirModal({ titulo, texto, tipo, comCancelar, comInput, valorInicial, textoOk, textoCancelar }) {
       return new Promise(resolve => {
         const fundo = document.getElementById('modal-fundo');
         const modal = document.getElementById('modal');
@@ -332,6 +347,7 @@
         input.style.display = comInput ? 'block' : 'none';
         input.value = valorInicial || '';
         cancelar.style.display = comCancelar ? 'block' : 'none';
+        cancelar.textContent = textoCancelar || 'Cancelar';
         ok.textContent = textoOk || 'OK';
         fundo.classList.add('aberto');
         if (comInput) setTimeout(() => { input.focus(); input.select(); }, 50);
@@ -381,6 +397,26 @@
         .apiLerDados();
     }
 
+    // Quem está a usar este telemóvel (fica guardado no próprio telemóvel).
+    let quemMem = '';
+    function quemAtual() {
+      if (quemMem) return quemMem;
+      try { quemMem = localStorage.getItem('lp_quem') || ''; } catch (e) {}
+      return quemMem;
+    }
+    async function escolherUtilizador() {
+      const luis = await abrirModal({
+        titulo: 'Quem és tu?',
+        texto: 'Escolhe o teu nome. Fica guardado neste telemóvel e aparece no histórico de cada alteração que fizeres.',
+        comCancelar: true, textoOk: 'Luís', textoCancelar: 'Paulo'
+      });
+      quemMem = luis ? 'Luís' : 'Paulo';
+      try { localStorage.setItem('lp_quem', quemMem); } catch (e) {}
+      setTxt('hist-quem', quemMem);
+      const cab = document.getElementById('sync-time');
+      cab.textContent = cab.textContent.replace(/\s•\s.*$/, '') + ' • ' + quemMem;
+    }
+
     let aGravar = false;
     function bloquearBotoes(sim) {
       aGravar = sim;
@@ -392,6 +428,7 @@
     // Devolve true se o pedido foi enviado; false se já havia uma gravação em curso.
     function enviarAcao(payload) {
       if (aGravar) return false;
+      payload.utilizador = quemAtual();
       bloquearBotoes(true);
       mostrarToast('A gravar na folha...');
       google.script.run
@@ -562,8 +599,21 @@
       document.getElementById('lista-despesas').innerHTML = listaComHistorico(
         despesas.filter(d => d.estado === 'Aberto'), despesas.filter(d => d.estado !== 'Aberto'), cartaoDespesa, 'Histórico de despesas liquidadas');
 
+      const reg = dados.registo || [];
+      document.getElementById('lista-historico').innerHTML = reg.length ? reg.map(r => `
+        <div class="card" style="padding:10px 12px;">
+          <div class="card-header" style="margin-bottom:2px;">
+            <div class="card-title" style="font-size:14px;">${esc(r.acao)}</div>
+            <span class="badge ${r.quem === 'Paulo' ? 'b-pend' : 'b-info'}">${esc(r.quem)}</span>
+          </div>
+          <small style="color:var(--muted)">${esc(r.data)}</small>
+          <div style="font-size:13px; margin-top:6px;">${esc(r.detalhe)}</div>
+        </div>`).join('')
+        : '<div style="color:var(--muted); font-size:13px; padding:8px 2px;">Ainda não há alterações registadas.</div>';
+      setTxt('hist-quem', quemAtual() || '—');
+
       const hora = new Date().toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-      setTxt('sync-time', 'Sincronizado às ' + hora);
+      setTxt('sync-time', 'Sincronizado às ' + hora + (quemAtual() ? ' • ' + quemAtual() : ''));
     }
 
 
@@ -802,7 +852,7 @@
       enviarAcao({ action: 'marcarObraRecebida', idObra: idObra });
     }
 
-    window.onload = function () { ajustarOrigemDespesa(); desenharChips(); carregarDados(); };
+    window.onload = function () { ajustarOrigemDespesa(); desenharChips(); carregarDados(); if (!quemAtual()) escolherUtilizador(); };
   </script>
 </body>
 </html>
