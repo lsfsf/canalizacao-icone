@@ -261,6 +261,68 @@ function guardarNaFolha(payload, acesso) {
     detalhe = 'Luís ' + fmtEur(resultado.luis) + ' • Paulo ' + fmtEur(resultado.paulo) + ' • fica no envelope ' + fmtEur(resultado.reserva) +
       ' • ' + resultado.obrasFechadas + ' obras fechadas, ' + resultado.despesasLiquidadas + ' despesas liquidadas';
   }
+  else if (payload.action === 'editarObra') {
+    const sh = abaObrigatoria(ss, ABAS.trabalhos);
+    const dados = sh.getDataRange().getValues();
+    const disp = sh.getDataRange().getDisplayValues();
+    let i = -1;
+    for (let k = PRIMEIRA_LINHA_DADOS - 1; k < dados.length; k++) {
+      if (String(dados[k][0]).trim() === String(payload.idObra).trim()) { i = k; break; }
+    }
+    if (i === -1) throw new Error('Obra ' + payload.idObra + ' não encontrada.');
+    if (String(dados[i][9]) === 'Fechado') throw new Error('A obra ' + payload.idObra + ' já está fechada e não pode ser alterada.');
+
+    // Confirma que a obra ainda é a que a pessoa viu (alguém pode tê-la alterado entretanto).
+    const esp = payload.esperado || {};
+    const valorAtual = dados[i][6] === '' ? null : Number(dados[i][6]);
+    const espValor = (esp.valor === null || esp.valor === undefined || esp.valor === '') ? null : Number(esp.valor);
+    const mesmoValor = (valorAtual === null && espValor === null) ||
+      (valorAtual !== null && espValor !== null && Math.abs(valorAtual - espValor) < 0.005);
+    const igual = String(disp[i][2]) === String(esp.obra) && String(disp[i][3]) === String(esp.localidade) &&
+      String(disp[i][4]) === String(esp.cliente) && String(disp[i][5]) === String(esp.descricao) &&
+      String(disp[i][7]) === String(esp.estado) && mesmoValor;
+    if (!igual) throw new Error('Esta obra mudou entretanto. Atualiza a app e tenta de novo.');
+
+    const nome = String(payload.nomeObra || '').trim();
+    const loc = String(payload.localidade || '').trim();
+    const cli = String(payload.nomeCliente || '').trim();
+    const desc = String(payload.descricao || '');
+    if (!nome && !loc && !cli && !desc.trim()) throw new Error('Escreve pelo menos o nome da obra, a localidade, o cliente ou um trabalho.');
+    const temValor = payload.valor !== null && payload.valor !== undefined && payload.valor !== '';
+    const valor = temValor ? Number(payload.valor) : null;
+    if (temValor && (isNaN(valor) || valor < 0)) throw new Error('Valor inválido.');
+    const estado = payload.estadoPagamento === 'Recebido em Caixa' ? 'Recebido em Caixa' : 'Pendente';
+    if (estado === 'Recebido em Caixa' && valor === null) throw new Error('Uma obra recebida precisa de valor.');
+    // Datas: vazio = mantém a atual. Recebida: mantém o dia do pagamento, ou hoje se acabou de passar a recebida.
+    const dataIni = payload.dataInicio ? normalizarData(payload.dataInicio, null) : null;
+    const jaRecebida = String(dados[i][7]) === 'Recebido em Caixa';
+    let dataRec = '';
+    if (estado === 'Recebido em Caixa') {
+      dataRec = payload.dataRecebimento ? normalizarData(payload.dataRecebimento, null) : (jaRecebida ? String(disp[i][8]) : hoje);
+    }
+
+    const linha = i + 1;
+    sh.getRange(linha, 3, 1, 4).setValues([[nome, loc, cli, desc]]);
+    sh.getRange(linha, 7).setValue(valor === null ? '' : valor);
+    sh.getRange(linha, 8).setValue(estado);
+    if (dataIni && dataIni !== String(disp[i][1])) sh.getRange(linha, 2).setValue(dataIni);
+    if (dataRec !== String(disp[i][8])) sh.getRange(linha, 9).setValue(dataRec);
+
+    const mud = [];
+    const cmp = (rot, a, b) => { if (String(a) !== String(b)) mud.push(rot + ': ' + (String(a) === '' ? '(vazio)' : a) + ' → ' + (String(b) === '' ? '(vazio)' : b)); };
+    cmp('nome', disp[i][2], nome); cmp('localidade', disp[i][3], loc); cmp('cliente', disp[i][4], cli);
+    if (desc !== String(disp[i][5])) mud.push('trabalhos atualizados');
+    if (valorAtual !== valor && !(valorAtual !== null && valor !== null && Math.abs(valorAtual - valor) < 0.005)) {
+      mud.push('valor: ' + (valorAtual === null ? 'sem valor' : fmtEur(valorAtual)) + ' → ' + (valor === null ? 'sem valor' : fmtEur(valor)));
+    }
+    cmp('estado', disp[i][7], estado);
+    if (dataIni && dataIni !== String(disp[i][1])) mud.push('início: ' + dataPT(String(disp[i][1])) + ' → ' + dataPT(dataIni));
+    if (dataRec !== String(disp[i][8])) mud.push('recebimento: ' + (disp[i][8] ? dataPT(String(disp[i][8])) : '(vazio)') + ' → ' + (dataRec ? dataPT(dataRec) : '(vazio)'));
+    if (mud.length) {
+      acaoTxt = 'Obra editada';
+      detalhe = String(dados[i][0]) + ' • ' + (nome || loc || cli || '(sem nome)') + ' — ' + mud.join('; ');
+    }
+  }
   else if (payload.action === 'editarDespesa') {
     const sh = abaObrigatoria(ss, ABAS.despesas);
     const fim = encontrarLinhaAntesDoTotal(sh, 1, 'Total') - 1;
